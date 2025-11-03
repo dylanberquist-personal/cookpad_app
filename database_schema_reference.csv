@@ -1,0 +1,121 @@
+Table Name,Column Name,Data Type,Constraints,Default Value,Description
+users,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique user identifier
+users,email,TEXT,UNIQUE NOT NULL,,User email address
+users,username,TEXT,UNIQUE NOT NULL,,Unique username
+users,display_name,TEXT,,,User's display name
+users,bio,TEXT,,,User biography
+users,profile_picture_url,TEXT,,,URL to profile picture
+users,chef_score,NUMERIC(5,2),CHECK >= 0,0.0,Chef score calculated from ratings and favorites
+users,skill_level,TEXT,CHECK IN (beginner intermediate advanced),beginner,Cooking skill level
+users,dietary_restrictions,JSONB,,[]::jsonb,Array of dietary restrictions
+users,cuisine_preferences,JSONB,,[]::jsonb,Array of preferred cuisines
+users,created_at,TIMESTAMPTZ,,NOW(),Account creation timestamp
+users,updated_at,TIMESTAMPTZ,,NOW(),Last update timestamp
+recipes,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique recipe identifier
+recipes,user_id,UUID,NOT NULL REFERENCES users(id),,Creator user ID
+recipes,title,TEXT,NOT NULL,,Recipe title
+recipes,description,TEXT,NOT NULL,,Recipe description
+recipes,ingredients,JSONB,NOT NULL,[]::jsonb,Array of ingredients with quantities
+recipes,instructions,JSONB,NOT NULL,[]::jsonb,Array of step-by-step instructions
+recipes,prep_time,INTEGER,CHECK >= 0,,Preparation time in minutes
+recipes,cook_time,INTEGER,CHECK >= 0,,Cooking time in minutes
+recipes,total_time,INTEGER,CHECK >= 0,,Total time in minutes
+recipes,servings,INTEGER,CHECK > 0,,Number of servings
+recipes,difficulty_level,TEXT,CHECK IN (easy medium hard),,Recipe difficulty
+recipes,cuisine_type,TEXT,,,Type of cuisine
+recipes,meal_type,TEXT,CHECK IN (breakfast lunch dinner snack dessert),,Type of meal
+recipes,nutrition,JSONB,,,Nutritional information
+recipes,tags,TEXT[],,{},"Array of tags for search and categorization"
+recipes,source_type,TEXT,CHECK IN (ai photo url manual),,How recipe was created
+recipes,source_url,TEXT,,,URL if imported from web
+recipes,is_public,BOOLEAN,,true,Whether recipe is publicly visible
+recipes,average_rating,NUMERIC(3,2),CHECK 0-5,0.0,Average rating (1-5 stars)
+recipes,rating_count,INTEGER,CHECK >= 0,0,Number of ratings
+recipes,favorite_count,INTEGER,CHECK >= 0,0,Number of favorites
+recipes,created_at,TIMESTAMPTZ,,NOW(),Recipe creation timestamp
+recipes,updated_at,TIMESTAMPTZ,,NOW(),Last update timestamp
+recipe_images,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique image identifier
+recipe_images,recipe_id,UUID,NOT NULL REFERENCES recipes(id),,Associated recipe ID
+recipe_images,image_url,TEXT,NOT NULL,,URL to recipe image
+recipe_images,is_primary,BOOLEAN,,false,Whether this is the primary image
+recipe_images,order,INTEGER,,0,Display order
+recipe_images,created_at,TIMESTAMPTZ,,NOW(),Image upload timestamp
+follows,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique follow identifier
+follows,follower_id,UUID,NOT NULL REFERENCES users(id),,User who is following
+follows,following_id,UUID,NOT NULL REFERENCES users(id),,User being followed
+follows,created_at,TIMESTAMPTZ,,NOW(),Follow timestamp
+follows,UNIQUE CONSTRAINT,,UNIQUE(follower_id following_id),,Prevent duplicate follows
+follows,CHECK CONSTRAINT,,CHECK follower_id != following_id,,Prevent self-follow
+ratings,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique rating identifier
+ratings,user_id,UUID,NOT NULL REFERENCES users(id),,User who rated
+ratings,recipe_id,UUID,NOT NULL REFERENCES recipes(id),,Recipe being rated
+ratings,rating,INTEGER,CHECK 1-5,,Rating value (1-5 stars)
+ratings,created_at,TIMESTAMPTZ,,NOW(),Rating creation timestamp
+ratings,updated_at,TIMESTAMPTZ,,NOW(),Last update timestamp
+ratings,UNIQUE CONSTRAINT,,UNIQUE(user_id recipe_id),,One rating per user per recipe
+favorites,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique favorite identifier
+favorites,user_id,UUID,NOT NULL REFERENCES users(id),,User who favorited
+favorites,recipe_id,UUID,NOT NULL REFERENCES recipes(id),,Recipe being favorited
+favorites,created_at,TIMESTAMPTZ,,NOW(),Favorite timestamp
+favorites,UNIQUE CONSTRAINT,,UNIQUE(user_id recipe_id),,One favorite per user per recipe
+comments,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique comment identifier
+comments,user_id,UUID,NOT NULL REFERENCES users(id),,User who commented
+comments,recipe_id,UUID,NOT NULL REFERENCES recipes(id),,Recipe being commented on
+comments,parent_comment_id,UUID,REFERENCES comments(id),,Parent comment for threading
+comments,content,TEXT,NOT NULL,,Comment text
+comments,created_at,TIMESTAMPTZ,,NOW(),Comment creation timestamp
+comments,updated_at,TIMESTAMPTZ,,NOW(),Last update timestamp
+collections,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique collection identifier
+collections,user_id,UUID,NOT NULL REFERENCES users(id),,Collection owner
+collections,name,TEXT,NOT NULL,,Collection name
+collections,description,TEXT,,,Collection description
+collections,is_public,BOOLEAN,,false,Whether collection is publicly visible
+collections,created_at,TIMESTAMPTZ,,NOW(),Collection creation timestamp
+collections,updated_at,TIMESTAMPTZ,,NOW(),Last update timestamp
+collection_recipes,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique collection-recipe link identifier
+collection_recipes,collection_id,UUID,NOT NULL REFERENCES collections(id),,Collection ID
+collection_recipes,recipe_id,UUID,NOT NULL REFERENCES recipes(id),,Recipe ID
+collection_recipes,added_at,TIMESTAMPTZ,,NOW(),When recipe was added to collection
+collection_recipes,UNIQUE CONSTRAINT,,UNIQUE(collection_id recipe_id),,One recipe per collection once
+pantry_items,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique pantry item identifier
+pantry_items,user_id,UUID,NOT NULL REFERENCES users(id),,Pantry owner
+pantry_items,ingredient_name,TEXT,NOT NULL,,Name of ingredient
+pantry_items,category,TEXT,,,Ingredient category
+pantry_items,quantity,TEXT,,,Quantity available
+pantry_items,is_low_stock,BOOLEAN,,false,Whether item is low stock
+pantry_items,added_at,TIMESTAMPTZ,,NOW(),When item was added
+pantry_items,updated_at,TIMESTAMPTZ,,NOW(),Last update timestamp
+shopping_lists,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique shopping list identifier
+shopping_lists,user_id,UUID,NOT NULL REFERENCES users(id),,List owner
+shopping_lists,name,TEXT,NOT NULL,,Shopping list name
+shopping_lists,created_at,TIMESTAMPTZ,,NOW(),List creation timestamp
+shopping_lists,updated_at,TIMESTAMPTZ,,NOW(),Last update timestamp
+shopping_list_items,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique shopping list item identifier
+shopping_list_items,shopping_list_id,UUID,NOT NULL REFERENCES shopping_lists(id),,Parent shopping list
+shopping_list_items,item_name,TEXT,NOT NULL,,Item name
+shopping_list_items,quantity,TEXT,,,Item quantity
+shopping_list_items,category,TEXT,,,Item category
+shopping_list_items,is_checked,BOOLEAN,,false,Whether item is checked off
+shopping_list_items,created_at,TIMESTAMPTZ,,NOW(),Item creation timestamp
+notifications,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique notification identifier
+notifications,user_id,UUID,NOT NULL REFERENCES users(id),,Notification recipient
+notifications,type,TEXT,CHECK IN (new_follower recipe_favorited recipe_rated comment remix),,Notification type
+notifications,actor_id,UUID,REFERENCES users(id),,User who triggered notification
+notifications,recipe_id,UUID,REFERENCES recipes(id),,Related recipe if applicable
+notifications,comment_id,UUID,REFERENCES comments(id),,Related comment if applicable
+notifications,is_read,BOOLEAN,,false,Whether notification has been read
+notifications,created_at,TIMESTAMPTZ,,NOW(),Notification timestamp
+ai_chat_sessions,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique chat session identifier
+ai_chat_sessions,user_id,UUID,NOT NULL REFERENCES users(id),,Chat session owner
+ai_chat_sessions,recipe_id,UUID,REFERENCES recipes(id),,Associated recipe if saved
+ai_chat_sessions,messages,JSONB,NOT NULL,[]::jsonb,Array of chat messages
+ai_chat_sessions,created_at,TIMESTAMPTZ,,NOW(),Session creation timestamp
+ai_chat_sessions,updated_at,TIMESTAMPTZ,,NOW(),Last update timestamp
+user_reports,id,UUID,PRIMARY KEY,uuid_generate_v4(),Unique report identifier
+user_reports,reporter_id,UUID,NOT NULL REFERENCES users(id),,User who made report
+user_reports,reported_user_id,UUID,REFERENCES users(id),,Reported user if applicable
+user_reports,reported_recipe_id,UUID,REFERENCES recipes(id),,Reported recipe if applicable
+user_reports,reported_comment_id,UUID,REFERENCES comments(id),,Reported comment if applicable
+user_reports,reason,TEXT,NOT NULL,,Reason for report
+user_reports,status,TEXT,CHECK IN (pending reviewed resolved),pending,Report status
+user_reports,created_at,TIMESTAMPTZ,,NOW(),Report creation timestamp

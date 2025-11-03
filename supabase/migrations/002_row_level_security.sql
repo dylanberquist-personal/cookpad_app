@@ -26,10 +26,16 @@ CREATE POLICY "Users can read public profiles" ON users
     FOR SELECT
     USING (true);
 
+-- Users can insert their own profile (for signup)
+CREATE POLICY "Users can insert own profile" ON users
+    FOR INSERT
+    WITH CHECK (auth.uid() = id);
+
 -- Users can update their own profile
 CREATE POLICY "Users can update own profile" ON users
     FOR UPDATE
-    USING (auth.uid() = id);
+    USING (auth.uid() = id)
+    WITH CHECK (auth.uid() = id);
 
 -- ============================================
 -- RECIPES POLICIES
@@ -57,6 +63,18 @@ CREATE POLICY "Users can delete own recipes" ON recipes
 -- ============================================
 -- RECIPE IMAGES POLICIES
 -- ============================================
+-- Create a function to check if a recipe exists (bypasses RLS)
+CREATE OR REPLACE FUNCTION recipe_exists(recipe_id_param UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1 
+        FROM recipes 
+        WHERE recipes.id = recipe_id_param
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Anyone can read recipe images for public recipes
 CREATE POLICY "Anyone can read recipe images" ON recipe_images
     FOR SELECT
@@ -68,9 +86,25 @@ CREATE POLICY "Anyone can read recipe images" ON recipe_images
         )
     );
 
--- Users can insert images for their own recipes
-CREATE POLICY "Users can insert own recipe images" ON recipe_images
+-- Anyone can insert images to any recipe (if authenticated)
+-- Using SECURITY DEFINER function to bypass RLS on recipes table
+CREATE POLICY "Anyone can insert recipe images" ON recipe_images
     FOR INSERT
+    WITH CHECK (
+        auth.uid() IS NOT NULL AND
+        recipe_exists(recipe_images.recipe_id)
+    );
+
+-- Users can update images for their own recipes
+CREATE POLICY "Users can update own recipe images" ON recipe_images
+    FOR UPDATE
+    USING (
+        EXISTS (
+            SELECT 1 FROM recipes r
+            WHERE r.id = recipe_images.recipe_id
+            AND r.user_id = auth.uid()
+        )
+    )
     WITH CHECK (
         EXISTS (
             SELECT 1 FROM recipes r

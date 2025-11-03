@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../config/supabase_config.dart';
 import 'auth/login_screen.dart';
+import 'my_recipes_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -22,7 +23,10 @@ class ProfileScreen extends StatelessWidget {
                   title: const Text('My Recipes'),
                   leading: const Icon(Icons.restaurant_menu),
                   onTap: () {
-                    // TODO: Navigate to user's recipes
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const MyRecipesScreen()),
+                    );
                   },
                 ),
                 ListTile(

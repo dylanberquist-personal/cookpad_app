@@ -24,19 +24,44 @@ class NutritionModel {
   });
 
   factory NutritionModel.fromJson(Map<String, dynamic> json) {
+    // Helper function to safely convert to int
+    int safeInt(dynamic value) {
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      if (value is num) return value.toInt();
+      return int.parse(value.toString());
+    }
+    
+    // Helper function to safely convert to double
+    double safeDouble(dynamic value) {
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      if (value is num) return value.toDouble();
+      return double.parse(value.toString());
+    }
+    
+    // Helper function to convert map values to double
+    Map<String, double>? convertMap(Map<dynamic, dynamic>? map) {
+      if (map == null) return null;
+      return map.map((key, value) => MapEntry(
+        key.toString(),
+        safeDouble(value),
+      ));
+    }
+    
     return NutritionModel(
-      caloriesPerServing: json['calories_per_serving'] as int,
-      protein: (json['protein'] as num).toDouble(),
-      carbohydrates: (json['carbohydrates'] as num).toDouble(),
-      fats: (json['fats'] as num).toDouble(),
-      fiber: json['fiber'] != null ? (json['fiber'] as num).toDouble() : null,
-      sugar: json['sugar'] != null ? (json['sugar'] as num).toDouble() : null,
-      sodium: json['sodium'] != null ? (json['sodium'] as num).toDouble() : null,
+      caloriesPerServing: safeInt(json['calories_per_serving']),
+      protein: safeDouble(json['protein']),
+      carbohydrates: safeDouble(json['carbohydrates']),
+      fats: safeDouble(json['fats']),
+      fiber: json['fiber'] != null ? safeDouble(json['fiber']) : null,
+      sugar: json['sugar'] != null ? safeDouble(json['sugar']) : null,
+      sodium: json['sodium'] != null ? safeDouble(json['sodium']) : null,
       vitamins: json['vitamins'] != null
-          ? Map<String, double>.from(json['vitamins'] as Map)
+          ? convertMap(json['vitamins'] as Map?)
           : null,
       minerals: json['minerals'] != null
-          ? Map<String, double>.from(json['minerals'] as Map)
+          ? convertMap(json['minerals'] as Map?)
           : null,
       servingSize: json['serving_size'] as String?,
     );

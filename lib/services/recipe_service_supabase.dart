@@ -34,9 +34,78 @@ class RecipeServiceSupabase {
 
     final response = await sortedQuery.range(offset, offset + limit - 1);
 
-    return (response as List)
+    final recipes = (response as List)
         .map((json) => _recipeFromSupabaseJson(json))
         .toList();
+
+    // Fetch images for all recipes in batch
+    if (recipes.isNotEmpty) {
+      final recipeIds = recipes.map((r) => r.id).toList();
+      final imagesResponse = await _supabase
+          .from('recipe_images')
+          .select('recipe_id, image_url, is_primary')
+          .inFilter('recipe_id', recipeIds)
+          .order('is_primary', ascending: false)
+          .order('order');
+
+      // Group images by recipe_id, ensuring primary images are first
+      final Map<String, List<Map<String, dynamic>>> imagesMapRaw = {};
+      for (var image in (imagesResponse as List)) {
+        final recipeId = image['recipe_id'] as String;
+        if (!imagesMapRaw.containsKey(recipeId)) {
+          imagesMapRaw[recipeId] = [];
+        }
+        imagesMapRaw[recipeId]!.add({
+          'image_url': image['image_url'] as String,
+          'is_primary': image['is_primary'] as bool? ?? false,
+        });
+      }
+
+      // Sort each recipe's images to ensure primary comes first
+      final Map<String, List<String>> imagesMap = {};
+      imagesMapRaw.forEach((recipeId, images) {
+        images.sort((a, b) {
+          if (a['is_primary'] == true && b['is_primary'] != true) return -1;
+          if (a['is_primary'] != true && b['is_primary'] == true) return 1;
+          return 0;
+        });
+        imagesMap[recipeId] = images.map((img) => img['image_url'] as String).toList();
+      });
+
+      // Update recipes with their images
+      return recipes.map((recipe) {
+        final imageUrls = imagesMap[recipe.id] ?? [];
+        return RecipeModel(
+          id: recipe.id,
+          userId: recipe.userId,
+          title: recipe.title,
+          description: recipe.description,
+          ingredients: recipe.ingredients,
+          instructions: recipe.instructions,
+          prepTime: recipe.prepTime,
+          cookTime: recipe.cookTime,
+          totalTime: recipe.totalTime,
+          servings: recipe.servings,
+          difficultyLevel: recipe.difficultyLevel,
+          cuisineType: recipe.cuisineType,
+          mealType: recipe.mealType,
+          nutrition: recipe.nutrition,
+          tags: recipe.tags,
+          sourceType: recipe.sourceType,
+          sourceUrl: recipe.sourceUrl,
+          isPublic: recipe.isPublic,
+          averageRating: recipe.averageRating,
+          ratingCount: recipe.ratingCount,
+          favoriteCount: recipe.favoriteCount,
+          createdAt: recipe.createdAt,
+          updatedAt: recipe.updatedAt,
+          imageUrls: imageUrls.isNotEmpty ? imageUrls : null,
+          creator: recipe.creator,
+        );
+      }).toList();
+    }
+
+    return recipes;
   }
 
   Future<RecipeModel?> getRecipeById(String recipeId, {String? currentUserId}) async {
@@ -47,6 +116,9 @@ class RecipeServiceSupabase {
         .single();
 
     final recipe = _recipeFromSupabaseJson(response);
+
+    // Fetch images from recipe_images table
+    final imageUrls = await getRecipeImages(recipeId);
 
     // Check if favorited and rated by current user
     if (currentUserId != null) {
@@ -88,32 +160,111 @@ class RecipeServiceSupabase {
         favoriteCount: recipe.favoriteCount,
         createdAt: recipe.createdAt,
         updatedAt: recipe.updatedAt,
-        imageUrls: recipe.imageUrls,
+        imageUrls: imageUrls.isNotEmpty ? imageUrls : null,
         isFavorite: favorite != null,
         userRating: rating != null ? (rating['rating'] as int) : null,
         creator: recipe.creator,
       );
     }
 
-    return recipe;
+    // Return recipe with images for non-authenticated users
+    return RecipeModel(
+      id: recipe.id,
+      userId: recipe.userId,
+      title: recipe.title,
+      description: recipe.description,
+      ingredients: recipe.ingredients,
+      instructions: recipe.instructions,
+      prepTime: recipe.prepTime,
+      cookTime: recipe.cookTime,
+      totalTime: recipe.totalTime,
+      servings: recipe.servings,
+      difficultyLevel: recipe.difficultyLevel,
+      cuisineType: recipe.cuisineType,
+      mealType: recipe.mealType,
+      nutrition: recipe.nutrition,
+      tags: recipe.tags,
+      sourceType: recipe.sourceType,
+      sourceUrl: recipe.sourceUrl,
+      isPublic: recipe.isPublic,
+      averageRating: recipe.averageRating,
+      ratingCount: recipe.ratingCount,
+      favoriteCount: recipe.favoriteCount,
+      createdAt: recipe.createdAt,
+      updatedAt: recipe.updatedAt,
+      imageUrls: imageUrls.isNotEmpty ? imageUrls : null,
+      creator: recipe.creator,
+    );
   }
 
   Future<List<String>> getRecipeImages(String recipeId) async {
     final response = await _supabase
         .from('recipe_images')
-        .select('image_url')
+        .select('image_url, is_primary')
         .eq('recipe_id', recipeId)
-        .order('order')
-        .order('is_primary', ascending: false);
+        .order('is_primary', ascending: false)
+        .order('order');
 
-    return (response as List)
+    // Sort to ensure primary images are first
+    final sortedResponse = (response as List).map((json) => {
+      'image_url': json['image_url'] as String,
+      'is_primary': json['is_primary'] as bool? ?? false,
+    }).toList();
+    
+    sortedResponse.sort((a, b) {
+      // Primary images first
+      if (a['is_primary'] == true && b['is_primary'] != true) return -1;
+      if (a['is_primary'] != true && b['is_primary'] == true) return 1;
+      return 0;
+    });
+
+    return sortedResponse
         .map((json) => json['image_url'] as String)
         .toList();
+  }
+
+  Future<Map<String, bool>> getRecipeImagePrimaryStatus(String recipeId) async {
+    final response = await _supabase
+        .from('recipe_images')
+        .select('image_url, is_primary')
+        .eq('recipe_id', recipeId);
+
+    final Map<String, bool> primaryStatus = {};
+    for (var image in (response as List)) {
+      primaryStatus[image['image_url'] as String] = image['is_primary'] as bool? ?? false;
+    }
+    return primaryStatus;
+  }
+
+  Future<void> setPrimaryImage(String recipeId, String imageUrl) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    // Verify recipe exists and user is owner
+    final recipe = await getRecipeById(recipeId);
+    if (recipe == null) throw Exception('Recipe not found');
+    if (recipe.userId != userId) throw Exception('Unauthorized: Only recipe owner can set primary image');
+
+    // First, unset all primary flags for this recipe
+    await _supabase
+        .from('recipe_images')
+        .update({'is_primary': false})
+        .eq('recipe_id', recipeId);
+
+    // Then set the selected image as primary
+    await _supabase
+        .from('recipe_images')
+        .update({'is_primary': true})
+        .eq('recipe_id', recipeId)
+        .eq('image_url', imageUrl);
   }
 
   Future<RecipeModel> createRecipe(RecipeModel recipe) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
+
+    // Ensure user exists in users table
+    await _ensureUserExists(userId);
 
     final recipeData = {
       'user_id': userId,
@@ -202,6 +353,71 @@ class RecipeServiceSupabase {
     await _supabase.from('recipes').delete().eq('id', recipeId);
   }
 
+  /// Adds an image to an existing recipe (anyone can add images)
+  Future<String> addRecipeImage(String recipeId, String imageUrl) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    // Verify recipe exists
+    final recipe = await getRecipeById(recipeId);
+    if (recipe == null) throw Exception('Recipe not found');
+
+    // Get current image count to determine order
+    final existingImages = await _supabase
+        .from('recipe_images')
+        .select('order')
+        .eq('recipe_id', recipeId)
+        .order('order', ascending: false)
+        .limit(1);
+
+    final nextOrder = existingImages.isNotEmpty && (existingImages.first['order'] as int?) != null
+        ? (existingImages.first['order'] as int) + 1
+        : 0;
+
+    // Insert image record
+    await _supabase.from('recipe_images').insert({
+      'recipe_id': recipeId,
+      'image_url': imageUrl,
+      'is_primary': nextOrder == 0, // First image is primary
+      'order': nextOrder,
+    });
+
+    return imageUrl;
+  }
+
+  Future<void> deleteRecipeImage(String recipeId, String imageUrl) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    // Verify recipe exists and user is owner
+    final recipe = await getRecipeById(recipeId);
+    if (recipe == null) throw Exception('Recipe not found');
+    if (recipe.userId != userId) throw Exception('Unauthorized: Only recipe owner can delete images');
+
+    // Delete image record
+    await _supabase
+        .from('recipe_images')
+        .delete()
+        .eq('recipe_id', recipeId)
+        .eq('image_url', imageUrl);
+
+    // Extract file path from URL and delete from storage
+    try {
+      // Parse the storage URL to get the file path
+      final uri = Uri.parse(imageUrl);
+      final pathSegments = uri.pathSegments;
+      // Find 'recipe-images' in the path and get everything after it
+      final recipeImagesIndex = pathSegments.indexWhere((s) => s == 'recipe-images');
+      if (recipeImagesIndex != -1 && recipeImagesIndex < pathSegments.length - 1) {
+        final filePath = pathSegments.sublist(recipeImagesIndex + 1).join('/');
+        await _supabase.storage.from('recipe-images').remove([filePath]);
+      }
+    } catch (e) {
+      // Log error but don't fail - the database record is already deleted
+      print('Warning: Failed to delete image from storage: $e');
+    }
+  }
+
   Future<void> toggleFavorite(String recipeId) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
@@ -256,14 +472,82 @@ class RecipeServiceSupabase {
 
     if (recipeIds.isEmpty) return [];
 
-    final recipes = await _supabase
+    final recipesResponse = await _supabase
         .from('recipes')
         .select('*, user:users!user_id(*)')
         .inFilter('id', recipeIds);
 
-    return (recipes as List)
+    final recipes = (recipesResponse as List)
         .map((json) => _recipeFromSupabaseJson(json))
         .toList();
+
+    // Fetch images for all recipes in batch
+    if (recipes.isNotEmpty) {
+      final imagesResponse = await _supabase
+          .from('recipe_images')
+          .select('recipe_id, image_url, is_primary')
+          .inFilter('recipe_id', recipeIds)
+          .order('is_primary', ascending: false)
+          .order('order');
+
+      // Group images by recipe_id, ensuring primary images are first
+      final Map<String, List<Map<String, dynamic>>> imagesMapRaw = {};
+      for (var image in (imagesResponse as List)) {
+        final recipeId = image['recipe_id'] as String;
+        if (!imagesMapRaw.containsKey(recipeId)) {
+          imagesMapRaw[recipeId] = [];
+        }
+        imagesMapRaw[recipeId]!.add({
+          'image_url': image['image_url'] as String,
+          'is_primary': image['is_primary'] as bool? ?? false,
+        });
+      }
+
+      // Sort each recipe's images to ensure primary comes first
+      final Map<String, List<String>> imagesMap = {};
+      imagesMapRaw.forEach((recipeId, images) {
+        images.sort((a, b) {
+          if (a['is_primary'] == true && b['is_primary'] != true) return -1;
+          if (a['is_primary'] != true && b['is_primary'] == true) return 1;
+          return 0;
+        });
+        imagesMap[recipeId] = images.map((img) => img['image_url'] as String).toList();
+      });
+
+      // Update recipes with their images
+      return recipes.map((recipe) {
+        final imageUrls = imagesMap[recipe.id] ?? [];
+        return RecipeModel(
+          id: recipe.id,
+          userId: recipe.userId,
+          title: recipe.title,
+          description: recipe.description,
+          ingredients: recipe.ingredients,
+          instructions: recipe.instructions,
+          prepTime: recipe.prepTime,
+          cookTime: recipe.cookTime,
+          totalTime: recipe.totalTime,
+          servings: recipe.servings,
+          difficultyLevel: recipe.difficultyLevel,
+          cuisineType: recipe.cuisineType,
+          mealType: recipe.mealType,
+          nutrition: recipe.nutrition,
+          tags: recipe.tags,
+          sourceType: recipe.sourceType,
+          sourceUrl: recipe.sourceUrl,
+          isPublic: recipe.isPublic,
+          averageRating: recipe.averageRating,
+          ratingCount: recipe.ratingCount,
+          favoriteCount: recipe.favoriteCount,
+          createdAt: recipe.createdAt,
+          updatedAt: recipe.updatedAt,
+          imageUrls: imageUrls.isNotEmpty ? imageUrls : null,
+          creator: recipe.creator,
+        );
+      }).toList();
+    }
+
+    return recipes;
   }
 
   Future<List<RecipeModel>> searchRecipes(String query) async {
@@ -275,9 +559,78 @@ class RecipeServiceSupabase {
         .order('created_at', ascending: false)
         .limit(50);
 
-    return (response as List)
+    final recipes = (response as List)
         .map((json) => _recipeFromSupabaseJson(json))
         .toList();
+
+    // Fetch images for all recipes in batch
+    if (recipes.isNotEmpty) {
+      final recipeIds = recipes.map((r) => r.id).toList();
+      final imagesResponse = await _supabase
+          .from('recipe_images')
+          .select('recipe_id, image_url, is_primary')
+          .inFilter('recipe_id', recipeIds)
+          .order('is_primary', ascending: false)
+          .order('order');
+
+      // Group images by recipe_id, ensuring primary images are first
+      final Map<String, List<Map<String, dynamic>>> imagesMapRaw = {};
+      for (var image in (imagesResponse as List)) {
+        final recipeId = image['recipe_id'] as String;
+        if (!imagesMapRaw.containsKey(recipeId)) {
+          imagesMapRaw[recipeId] = [];
+        }
+        imagesMapRaw[recipeId]!.add({
+          'image_url': image['image_url'] as String,
+          'is_primary': image['is_primary'] as bool? ?? false,
+        });
+      }
+
+      // Sort each recipe's images to ensure primary comes first
+      final Map<String, List<String>> imagesMap = {};
+      imagesMapRaw.forEach((recipeId, images) {
+        images.sort((a, b) {
+          if (a['is_primary'] == true && b['is_primary'] != true) return -1;
+          if (a['is_primary'] != true && b['is_primary'] == true) return 1;
+          return 0;
+        });
+        imagesMap[recipeId] = images.map((img) => img['image_url'] as String).toList();
+      });
+
+      // Update recipes with their images
+      return recipes.map((recipe) {
+        final imageUrls = imagesMap[recipe.id] ?? [];
+        return RecipeModel(
+          id: recipe.id,
+          userId: recipe.userId,
+          title: recipe.title,
+          description: recipe.description,
+          ingredients: recipe.ingredients,
+          instructions: recipe.instructions,
+          prepTime: recipe.prepTime,
+          cookTime: recipe.cookTime,
+          totalTime: recipe.totalTime,
+          servings: recipe.servings,
+          difficultyLevel: recipe.difficultyLevel,
+          cuisineType: recipe.cuisineType,
+          mealType: recipe.mealType,
+          nutrition: recipe.nutrition,
+          tags: recipe.tags,
+          sourceType: recipe.sourceType,
+          sourceUrl: recipe.sourceUrl,
+          isPublic: recipe.isPublic,
+          averageRating: recipe.averageRating,
+          ratingCount: recipe.ratingCount,
+          favoriteCount: recipe.favoriteCount,
+          createdAt: recipe.createdAt,
+          updatedAt: recipe.updatedAt,
+          imageUrls: imageUrls.isNotEmpty ? imageUrls : null,
+          creator: recipe.creator,
+        );
+      }).toList();
+    }
+
+    return recipes;
   }
 
   RecipeModel _recipeFromSupabaseJson(Map<String, dynamic> json) {
@@ -311,5 +664,51 @@ class RecipeServiceSupabase {
       updatedAt: recipe.updatedAt,
       creator: user,
     );
+  }
+
+  Future<void> _ensureUserExists(String userId) async {
+    // Check if user exists in users table
+    final existingUser = await _supabase
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (existingUser == null) {
+      // Get user email from auth
+      final authUser = _supabase.auth.currentUser;
+      if (authUser == null || authUser.id != userId) {
+        throw Exception('User not authenticated');
+      }
+
+      // Create user record in users table
+      // Generate unique username from email
+      final email = authUser.email ?? '';
+      var username = email.split('@').first;
+      
+      // Check if username already exists, append numbers if needed
+      int counter = 1;
+      var finalUsername = username;
+      while (true) {
+        final exists = await _supabase
+            .from('users')
+            .select('id')
+            .eq('username', finalUsername)
+            .maybeSingle();
+        
+        if (exists == null) break;
+        finalUsername = '$username$counter';
+        counter++;
+      }
+
+      await _supabase.from('users').insert({
+        'id': userId,
+        'email': email,
+        'username': finalUsername,
+        'skill_level': 'beginner',
+        'dietary_restrictions': [],
+        'chef_score': 0.0,
+      });
+    }
   }
 }

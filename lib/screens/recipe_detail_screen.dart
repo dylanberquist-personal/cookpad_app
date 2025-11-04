@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/recipe.dart';
+import '../models/user_model.dart';
 import '../services/recipe_service.dart';
+import '../config/supabase_config.dart';
+import '../widgets/creator_profile_card.dart';
 
 class RecipeDetailScreen extends StatefulWidget {
   final Recipe recipe;
@@ -13,13 +16,17 @@ class RecipeDetailScreen extends StatefulWidget {
 
 class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   final RecipeService _recipeService = RecipeService();
+  final _supabase = SupabaseConfig.client;
   late Recipe _recipe;
   bool _isLoading = true;
+  UserModel? _creator;
+  bool _isLoadingCreator = false;
 
   @override
   void initState() {
     super.initState();
     _loadRecipe();
+    _loadCreator();
   }
 
   Future<void> _loadRecipe() async {
@@ -30,6 +37,47 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       );
       _isLoading = false;
     });
+  }
+
+  Future<void> _loadCreator() async {
+    // Try to load user by username from author field
+    // Remove "Chef " prefix if present
+    String authorName = widget.recipe.author;
+    if (authorName.startsWith('Chef ')) {
+      authorName = authorName.substring(6);
+    }
+    
+    setState(() {
+      _isLoadingCreator = true;
+    });
+
+    try {
+      // Try to find user by username (case-insensitive)
+      final response = await _supabase
+          .from('users')
+          .select()
+          .ilike('username', authorName)
+          .maybeSingle();
+
+      if (response != null && mounted) {
+        setState(() {
+          _creator = UserModel.fromJson(response);
+          _isLoadingCreator = false;
+        });
+      } else {
+        if (mounted) {
+          setState(() {
+            _isLoadingCreator = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingCreator = false;
+        });
+      }
+    }
   }
 
   Future<void> _toggleFavorite() async {
@@ -111,11 +159,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'By ${_recipe.author}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                  ),
-                  const SizedBox(height: 32),
-                  Text(
                     'Ingredients',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.bold,
@@ -181,6 +224,68 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 24),
+                  // Creator Profile Card
+                  if (_isLoadingCreator)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_creator != null)
+                    CreatorProfileCard(
+                      creator: _creator,
+                      userId: _creator!.id,
+                    )
+                  else
+                    // Fallback: show author name in a card format
+                    InkWell(
+                      onTap: null, // Not navigable without user info
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey[200]!),
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 30,
+                              backgroundColor: Colors.grey[300],
+                              child: Text(
+                                _recipe.author.substring(0, 1).toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Created by',
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          color: Colors.grey[600],
+                                        ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _recipe.author,
+                                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 32),
                 ],
               ),

@@ -9,6 +9,7 @@ import '../services/ai_recipe_service.dart';
 import '../config/supabase_config.dart';
 import '../services/comment_service.dart';
 import '../models/comment_model.dart';
+import '../widgets/creator_profile_card.dart';
 
 class RecipeDetailScreenNew extends StatefulWidget {
   final RecipeModel recipe;
@@ -795,6 +796,12 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
                         ],
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 24),
+                  // Creator Profile Card
+                  CreatorProfileCard(
+                    creator: _recipe.creator,
+                    userId: _recipe.creator?.id ?? _recipe.userId,
                   ),
                   const SizedBox(height: 24),
                   const Divider(height: 32),

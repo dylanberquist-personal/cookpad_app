@@ -7,6 +7,7 @@ import 'pantry_screen.dart';
 import 'my_profile_detail_screen.dart';
 import 'favorites_screen.dart';
 import 'collections_screen.dart';
+import 'shopping_lists_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -71,7 +72,12 @@ class ProfileScreen extends StatelessWidget {
                   title: const Text('Shopping Lists'),
                   leading: const Icon(Icons.shopping_cart),
                   onTap: () {
-                    // TODO: Navigate to shopping lists
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ShoppingListsScreen(),
+                      ),
+                    );
                   },
                 ),
                 ListTile(

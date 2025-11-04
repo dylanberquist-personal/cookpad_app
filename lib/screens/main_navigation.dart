@@ -46,6 +46,8 @@ class _MainNavigationState extends State<MainNavigation> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
+          // Dismiss keyboard before navigation
+          FocusScope.of(context).unfocus();
           setState(() => _currentIndex = index);
         },
         destinations: const [

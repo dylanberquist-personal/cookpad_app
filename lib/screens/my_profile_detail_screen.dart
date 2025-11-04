@@ -532,6 +532,9 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentNavIndex,
         onDestinationSelected: (index) {
+          // Dismiss keyboard before navigation
+          FocusScope.of(context).unfocus();
+          
           // Always navigate to profile screen when clicking profile icon
           if (index == 4) {
             if (mounted) {

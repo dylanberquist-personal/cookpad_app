@@ -109,6 +109,9 @@ class _MyRecipesScreenState extends State<MyRecipesScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: 4, // Profile tab
         onDestinationSelected: (index) {
+          // Dismiss keyboard before navigation
+          FocusScope.of(context).unfocus();
+          
           // Always navigate to profile screen when clicking profile icon
           if (index == 4) {
             if (mounted) {

@@ -791,26 +791,23 @@ class _PantryScreenState extends State<PantryScreen> {
                         // Category Filter
                         if (_itemsByCategory.length > 1)
                           Container(
-                            height: 50,
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: ListView(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
                               padding: const EdgeInsets.symmetric(horizontal: 16),
-                              children: [
-                                _CategoryChip(
-                                  label: 'All',
-                                  isSelected: _selectedCategory == 'All',
-                                  onTap: () {
-                                    setState(() {
-                                      _selectedCategory = 'All';
-                                    });
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                ..._itemsByCategory.keys.map(
-                                  (category) => Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: _CategoryChip(
+                              child: Row(
+                                children: [
+                                  _CategoryChip(
+                                    label: 'All',
+                                    isSelected: _selectedCategory == 'All',
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedCategory = 'All';
+                                      });
+                                    },
+                                  ),
+                                  ..._itemsByCategory.keys.map(
+                                    (category) => _CategoryChip(
                                       label: category,
                                       isSelected: _selectedCategory == category,
                                       onTap: () {
@@ -820,59 +817,30 @@ class _PantryScreenState extends State<PantryScreen> {
                                       },
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         // Items List
                         Expanded(
                           child: RefreshIndicator(
                             onRefresh: _loadPantryItems,
-                            child: ListView.builder(
-                              padding: const EdgeInsets.all(16),
+                            child: ListView.separated(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
                               itemCount: _filteredItems.length,
+                              separatorBuilder: (context, index) => Divider(
+                                height: 1,
+                                thickness: 1,
+                                color: Colors.grey.shade200,
+                                indent: 16,
+                                endIndent: 16,
+                              ),
                               itemBuilder: (context, index) {
                                 final item = _filteredItems[index];
-                                return Card(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  child: ListTile(
-                                    leading: Icon(
-                                      Icons.shopping_basket,
-                                      color: item.isLowStock
-                                          ? Colors.orange
-                                          : Colors.green,
-                                    ),
-                                    title: Text(item.ingredientName),
-                                    subtitle: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        if (item.quantity != null)
-                                          Text('Quantity: ${item.quantity}'),
-                                        if (item.category != null)
-                                          Text(
-                                            'Category: ${item.category}',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey.shade600,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.edit),
-                                          onPressed: () => _showEditItemDialog(item),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete),
-                                          color: Colors.red,
-                                          onPressed: () => _deleteItem(item),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                                return _PantryItemTile(
+                                  item: item,
+                                  onEdit: () => _showEditItemDialog(item),
+                                  onDelete: () => _deleteItem(item),
                                 );
                               },
                             ),
@@ -960,12 +928,165 @@ class _CategoryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (_) => onTap(),
-      selectedColor: Colors.orange.shade100,
-      checkmarkColor: Colors.orange,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: isSelected 
+              ? Theme.of(context).primaryColor.withOpacity(0.1)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected 
+                ? Theme.of(context).primaryColor
+                : Colors.grey.shade300,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            color: isSelected 
+                ? Theme.of(context).primaryColor
+                : Colors.grey.shade700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PantryItemTile extends StatelessWidget {
+  final PantryItemModel item;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _PantryItemTile({
+    required this.item,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onEdit,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            // Low stock indicator (minimal dot)
+            if (item.isLowStock)
+              Container(
+                width: 6,
+                height: 6,
+                margin: const EdgeInsets.only(right: 10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade400,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            // Item content
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    item.ingredientName,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  if (item.quantity != null || item.category != null) ...[
+                    const SizedBox(height: 2),
+                    Wrap(
+                      spacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (item.quantity != null)
+                          Text(
+                            item.quantity!,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        if (item.category != null) ...[
+                          if (item.quantity != null)
+                            Container(
+                              width: 2,
+                              height: 2,
+                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade400,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          Text(
+                            item.category!,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // Actions menu
+            PopupMenuButton<String>(
+              icon: Icon(
+                Icons.more_vert,
+                size: 18,
+                color: Colors.grey.shade600,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit_outlined, size: 18, color: Colors.grey.shade700),
+                      const SizedBox(width: 8),
+                      const Text('Edit'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline, size: 18, color: Colors.red.shade400),
+                      const SizedBox(width: 8),
+                      Text('Delete', style: TextStyle(color: Colors.red.shade400)),
+                    ],
+                  ),
+                ),
+              ],
+              onSelected: (value) {
+                if (value == 'edit') {
+                  onEdit();
+                } else if (value == 'delete') {
+                  onDelete();
+                }
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

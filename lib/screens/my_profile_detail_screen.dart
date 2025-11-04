@@ -3,9 +3,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'dart:io';
 import '../services/auth_service.dart';
+import '../services/follow_service.dart';
+import '../services/recipe_service_supabase.dart';
 import '../models/user_model.dart';
+import '../models/recipe_model.dart';
 import '../config/supabase_config.dart';
+import '../widgets/creator_profile_card.dart';
 import 'main_navigation.dart';
+import 'recipe_detail_screen_new.dart';
 
 class MyProfileDetailScreen extends StatefulWidget {
   final String userId;
@@ -21,15 +26,22 @@ class MyProfileDetailScreen extends StatefulWidget {
 
 class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
   final _authService = AuthService();
+  final _followService = FollowService();
+  final _recipeService = RecipeServiceSupabase();
   final _supabase = SupabaseConfig.client;
+  final _scrollController = ScrollController();
+  final GlobalKey _recipesKey = GlobalKey();
   
   UserModel? _userProfile;
   bool _isLoading = true;
   bool _isEditing = false;
   bool _isSaving = false;
   bool _isUploadingImage = false;
+  bool _isFollowing = false;
+  bool _isTogglingFollow = false;
   Color? _bannerColor;
   int _currentNavIndex = 4; // Profile is index 4
+  List<RecipeModel> _publicRecipes = [];
 
   // Editable fields
   final _bioController = TextEditingController();
@@ -68,6 +80,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
   void dispose() {
     _bioController.dispose();
     _displayNameController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -90,6 +103,14 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
 
       // Load stats
       await _loadStats();
+
+      // Load follow status
+      if (!_isOwner) {
+        await _checkFollowStatus();
+      }
+
+      // Load public recipes
+      await _loadPublicRecipes();
 
       // Load banner color from profile picture
       await _loadBannerColor();
@@ -173,6 +194,108 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
     } catch (e) {
       print('Error loading banner color: $e');
       _bannerColor = Theme.of(context).primaryColor;
+    }
+  }
+
+  Future<void> _checkFollowStatus() async {
+    try {
+      final isFollowing = await _followService.isFollowing(widget.userId);
+      setState(() {
+        _isFollowing = isFollowing;
+      });
+    } catch (e) {
+      print('Error checking follow status: $e');
+    }
+  }
+
+  Future<void> _toggleFollow() async {
+    if (_isTogglingFollow) return;
+
+    setState(() => _isTogglingFollow = true);
+    try {
+      if (_isFollowing) {
+        await _followService.unfollowUser(widget.userId);
+      } else {
+        await _followService.followUser(widget.userId);
+      }
+      await _checkFollowStatus();
+      await _loadStats(); // Reload stats to update follower count
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    } finally {
+      setState(() => _isTogglingFollow = false);
+    }
+  }
+
+  Future<void> _loadPublicRecipes() async {
+    try {
+      final recipes = await _recipeService.getRecipes(
+        userId: widget.userId,
+        isPublic: true,
+        limit: 50,
+      );
+      setState(() {
+        _publicRecipes = recipes;
+      });
+    } catch (e) {
+      print('Error loading public recipes: $e');
+    }
+  }
+
+  void _scrollToRecipes() {
+    final context = _recipesKey.currentContext;
+    if (context != null) {
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  Future<void> _showFollowersPopup() async {
+    try {
+      final followers = await _followService.getFollowers(widget.userId);
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (context) => _FollowersFollowingDialog(
+          title: 'Followers',
+          users: followers,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading followers: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showFollowingPopup() async {
+    try {
+      final following = await _followService.getFollowing(widget.userId);
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (context) => _FollowersFollowingDialog(
+          title: 'Following',
+          users: following,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading following: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -389,6 +512,20 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentNavIndex,
         onDestinationSelected: (index) {
+          // Always navigate to profile screen when clicking profile icon
+          if (index == 4) {
+            if (mounted) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(
+                  builder: (context) => MainNavigation(initialIndex: 4),
+                ),
+                (route) => false,
+              );
+            }
+            return;
+          }
+          
+          // For other icons, only navigate if not already on that screen
           if (index == _currentNavIndex) return;
           
           if (mounted) {
@@ -430,6 +567,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
         ],
       ),
       body: SingleChildScrollView(
+        controller: _scrollController,
         child: Column(
           children: [
             // Header Section with Gradient from Profile Picture Color
@@ -552,6 +690,31 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                   ),
                   const SizedBox(height: 24),
 
+                  // Follow Button (only show if not owner)
+                  if (!_isOwner) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isTogglingFollow ? null : _toggleFollow,
+                        icon: _isTogglingFollow
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Icon(_isFollowing ? Icons.person_remove : Icons.person_add),
+                        label: Text(_isFollowing ? 'Unfollow' : 'Follow'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
                   // Stats Card
                   Card(
                     elevation: 2,
@@ -563,9 +726,24 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          _buildStatColumn('Recipes', _totalRecipes.toString(), Icons.restaurant_menu),
-                          _buildStatColumn('Followers', _followerCount.toString(), Icons.people),
-                          _buildStatColumn('Following', _followingCount.toString(), Icons.person_add),
+                          _buildStatColumn(
+                            'Recipes',
+                            _totalRecipes.toString(),
+                            Icons.restaurant_menu,
+                            onTap: _scrollToRecipes,
+                          ),
+                          _buildStatColumn(
+                            'Followers',
+                            _followerCount.toString(),
+                            Icons.people,
+                            onTap: _showFollowersPopup,
+                          ),
+                          _buildStatColumn(
+                            'Following',
+                            _followingCount.toString(),
+                            Icons.person_add,
+                            onTap: _showFollowingPopup,
+                          ),
                           _buildStatColumn(
                             'Chef Score',
                             _userProfile!.chefScore.toStringAsFixed(1),
@@ -777,14 +955,66 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                 ],
               ),
             ),
+
+            // Public Recipes Section
+            if (_publicRecipes.isNotEmpty) ...[
+              Container(
+                key: _recipesKey,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.restaurant_menu, size: 24, color: Theme.of(context).primaryColor),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Public Recipes',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        childAspectRatio: 0.75,
+                      ),
+                      itemCount: _publicRecipes.length,
+                      itemBuilder: (context, index) {
+                        final recipe = _publicRecipes[index];
+                        return _RecipeCard(
+                          recipe: recipe,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => RecipeDetailScreenNew(recipe: recipe),
+                              ),
+                            ).then((_) => _loadPublicRecipes());
+                          },
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatColumn(String label, String value, IconData icon, {bool isHighlight = false}) {
-    return Column(
+  Widget _buildStatColumn(String label, String value, IconData icon, {bool isHighlight = false, VoidCallback? onTap}) {
+    final column = Column(
       children: [
         Icon(
           icon,
@@ -809,6 +1039,19 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
         ),
       ],
     );
+
+    if (onTap != null) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: column,
+        ),
+      );
+    }
+
+    return column;
   }
 
   Widget _buildSkillLevelMeter(String skillLevel, {bool isEditing = false}) {
@@ -961,6 +1204,150 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _RecipeCard extends StatelessWidget {
+  final RecipeModel recipe;
+  final VoidCallback onTap;
+
+  const _RecipeCard({
+    required this.recipe,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  image: recipe.imageUrls?.isNotEmpty == true
+                      ? DecorationImage(
+                          image: NetworkImage(recipe.imageUrls!.first),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                ),
+                child: recipe.imageUrls?.isEmpty != false
+                    ? const Center(
+                        child: Icon(Icons.restaurant_menu, size: 48, color: Colors.grey),
+                      )
+                    : null,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    recipe.title,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text('${recipe.totalTime} min', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                      const SizedBox(width: 12),
+                      Icon(Icons.star, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text('${recipe.averageRating.toStringAsFixed(1)}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FollowersFollowingDialog extends StatelessWidget {
+  final String title;
+  final List<UserModel> users;
+
+  const _FollowersFollowingDialog({
+    required this.title,
+    required this.users,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 600),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: users.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Text(
+                        'No $title',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              color: Colors.grey[600],
+                            ),
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: users.length,
+                      itemBuilder: (context, index) {
+                        final user = users[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+                          child: CreatorProfileCard(creator: user),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

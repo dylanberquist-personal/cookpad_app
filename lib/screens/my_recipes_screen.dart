@@ -109,8 +109,16 @@ class _MyRecipesScreenState extends State<MyRecipesScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: 4, // Profile tab
         onDestinationSelected: (index) {
+          // Always navigate to profile screen when clicking profile icon
           if (index == 4) {
-            // Already on profile/my recipes
+            if (mounted) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(
+                  builder: (context) => MainNavigation(initialIndex: 4),
+                ),
+                (route) => false,
+              );
+            }
             return;
           }
           

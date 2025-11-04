@@ -127,7 +127,7 @@ class _FeedScreenState extends State<FeedScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         title: Padding(
-          padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+          padding: const EdgeInsets.only(top: 13.0, bottom: 13.0),
           child: Container(
             decoration: BoxDecoration(
               color: Colors.white,

@@ -264,6 +264,41 @@ class _ShoppingListsScreenState extends State<ShoppingListsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Shopping Lists'),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.add),
+            tooltip: 'Add Shopping List',
+            onSelected: (value) {
+              if (value == 'new') {
+                _createNewList();
+              } else if (value == 'generate') {
+                _generateFromCollection();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'new',
+                child: Row(
+                  children: [
+                    Icon(Icons.add),
+                    SizedBox(width: 8),
+                    Text('New List'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'generate',
+                child: Row(
+                  children: [
+                    Icon(Icons.auto_awesome),
+                    SizedBox(width: 8),
+                    Text('Generate from Collection'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -377,56 +412,6 @@ class _ShoppingListsScreenState extends State<ShoppingListsScreen> {
             label: '',
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          final RenderBox? overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
-          if (overlay == null) return;
-          
-          final screenSize = MediaQuery.of(context).size;
-          final fabSize = 56.0; // Default FAB size
-          final padding = 16.0;
-          
-          // Calculate position - appear above the FAB
-          final left = screenSize.width - fabSize - padding;
-          final top = screenSize.height - fabSize - padding - 200; // 200px above the button
-          final right = screenSize.width - padding;
-          final bottom = screenSize.height - fabSize - padding;
-          
-          showMenu(
-            context: context,
-            position: RelativeRect.fromLTRB(left, top, right, bottom),
-            items: [
-              PopupMenuItem(
-                value: 'new',
-                child: const Row(
-                  children: [
-                    Icon(Icons.add),
-                    SizedBox(width: 8),
-                    Text('New List'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'generate',
-                child: const Row(
-                  children: [
-                    Icon(Icons.auto_awesome),
-                    SizedBox(width: 8),
-                    Text('Generate from Collection'),
-                  ],
-                ),
-              ),
-            ],
-          ).then((value) {
-            if (value == 'new') {
-              _createNewList();
-            } else if (value == 'generate') {
-              _generateFromCollection();
-            }
-          });
-        },
-        child: const Icon(Icons.add),
       ),
     );
   }

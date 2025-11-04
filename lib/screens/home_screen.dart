@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import '../models/recipe.dart';
+import '../models/recipe_model.dart';
 import '../services/recipe_service.dart';
+import '../services/recipe_service_supabase.dart';
+import '../services/pantry_service.dart';
+import '../services/preferences_service.dart';
 import 'recipe_detail_screen.dart';
+import 'recipe_detail_screen_new.dart';
 import 'search_screen.dart';
 import 'favorites_screen.dart';
 import 'add_recipe_screen.dart';
@@ -13,15 +18,68 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final RecipeService _recipeService = RecipeService();
+  final RecipeServiceSupabase _recipeServiceSupabase = RecipeServiceSupabase();
+  final PantryService _pantryService = PantryService();
+  final PreferencesService _preferencesService = PreferencesService();
   List<Recipe> _recipes = [];
+  List<RecipeModel> _recipesYouCanMake = [];
   bool _isLoading = true;
+  bool _pantryEnabled = false;
+  bool _isLoadingPantryRecipes = false;
+  bool _isInitialized = false; // Track if widget is initialized
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadRecipes();
+    _loadPantryStatus().then((_) {
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Reload pantry status when app resumes
+      _loadPantryStatus();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload pantry status when dependencies change (including route changes)
+    // Only reload if widget is initialized to avoid unnecessary calls
+    if (_isInitialized) {
+      _loadPantryStatus();
+    }
+  }
+
+  Future<void> _loadPantryStatus() async {
+    final isEnabled = await _preferencesService.isPantryEnabled();
+    setState(() {
+      _pantryEnabled = isEnabled;
+    });
+    if (isEnabled) {
+      await _loadRecipesYouCanMake();
+    } else {
+      setState(() {
+        _recipesYouCanMake = [];
+      });
+    }
   }
 
   Future<void> _loadRecipes() async {
@@ -35,6 +93,66 @@ class _HomeScreenState extends State<HomeScreen> {
       _recipes = recipesWithFavorites;
       _isLoading = false;
     });
+  }
+
+  Future<void> _loadRecipesYouCanMake() async {
+    if (!_pantryEnabled) return;
+    
+    setState(() => _isLoadingPantryRecipes = true);
+    try {
+      final pantryItems = await _pantryService.getPantryItems();
+      if (pantryItems.isEmpty) {
+        setState(() {
+          _recipesYouCanMake = [];
+          _isLoadingPantryRecipes = false;
+        });
+        return;
+      }
+
+      final pantryIngredientNames = pantryItems
+          .map((item) => item.ingredientName.toLowerCase().trim())
+          .toList();
+
+      // Get all public recipes
+      final allRecipes = await _recipeServiceSupabase.getRecipes(
+        isPublic: true,
+        limit: 100,
+      );
+
+      // Filter recipes that can be made with pantry items
+      final recipesYouCanMake = allRecipes.where((recipe) {
+        // Check if all ingredients are in pantry (fuzzy match)
+        for (final ingredient in recipe.ingredients) {
+          final ingredientName = ingredient.name.toLowerCase().trim();
+          bool found = false;
+          
+          // Try exact match first
+          for (final pantryName in pantryIngredientNames) {
+            if (pantryName == ingredientName ||
+                pantryName.contains(ingredientName) ||
+                ingredientName.contains(pantryName)) {
+              found = true;
+              break;
+            }
+          }
+          
+          if (!found) {
+            return false; // Recipe needs this ingredient
+          }
+        }
+        return true; // All ingredients found
+      }).toList();
+
+      setState(() {
+        _recipesYouCanMake = recipesYouCanMake;
+        _isLoadingPantryRecipes = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingPantryRecipes = false;
+      });
+      // Silently fail - this is an optional feature
+    }
   }
 
   @override
@@ -94,34 +212,130 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 )
               : RefreshIndicator(
-                  onRefresh: _loadRecipes,
-                  child: GridView.builder(
-                    padding: const EdgeInsets.all(16),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
-                      childAspectRatio: 0.75,
-                    ),
-                    itemCount: _recipes.length,
-                    itemBuilder: (context, index) {
-                      final recipe = _recipes[index];
-                      return _RecipeCard(
-                        recipe: recipe,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => RecipeDetailScreen(recipe: recipe),
+                  onRefresh: () async {
+                    await _loadRecipes();
+                    if (_pantryEnabled) {
+                      await _loadRecipesYouCanMake();
+                    }
+                  },
+                  child: CustomScrollView(
+                    slivers: [
+                      // Recipes You Can Make Section (only if pantry is enabled)
+                      if (_pantryEnabled && _recipesYouCanMake.isNotEmpty) ...[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.kitchen, color: Colors.orange),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'Recipes You Can Make Right Now',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ).then((_) => _loadRecipes());
-                        },
-                        onFavoriteToggle: () async {
-                          await _recipeService.toggleFavorite(recipe.id);
-                          _loadRecipes();
-                        },
-                      );
-                    },
+                          ),
+                        ),
+                        SliverToBoxAdapter(
+                          child: _isLoadingPantryRecipes
+                              ? const Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Center(child: CircularProgressIndicator()),
+                                )
+                              : SizedBox(
+                                  height: 200,
+                                  child: ListView.builder(
+                                    scrollDirection: Axis.horizontal,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    itemCount: _recipesYouCanMake.length,
+                                    itemBuilder: (context, index) {
+                                      final recipe = _recipesYouCanMake[index];
+                                      return Container(
+                                        width: 200,
+                                        margin: const EdgeInsets.only(right: 16),
+                                        child: _RecipeModelCard(
+                                          recipe: recipe,
+                                          onTap: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) => RecipeDetailScreenNew(recipe: recipe),
+                                              ),
+                                            ).then((_) {
+                                              _loadRecipes();
+                                              if (_pantryEnabled) {
+                                                _loadRecipesYouCanMake();
+                                              }
+                                            });
+                                          },
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                        ),
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.restaurant_menu, color: Colors.grey),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'All Recipes',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                      // All Recipes Grid
+                      SliverPadding(
+                        padding: const EdgeInsets.all(16),
+                        sliver: SliverGrid(
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                            childAspectRatio: 0.75,
+                          ),
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final recipe = _recipes[index];
+                              return _RecipeCard(
+                                recipe: recipe,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => RecipeDetailScreen(recipe: recipe),
+                                    ),
+                                  ).then((_) {
+                                    _loadRecipes();
+                                    if (_pantryEnabled) {
+                                      _loadRecipesYouCanMake();
+                                    }
+                                  });
+                                },
+                                onFavoriteToggle: () async {
+                                  await _recipeService.toggleFavorite(recipe.id);
+                                  _loadRecipes();
+                                },
+                              );
+                            },
+                            childCount: _recipes.length,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
       floatingActionButton: FloatingActionButton(
@@ -129,9 +343,94 @@ class _HomeScreenState extends State<HomeScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const AddRecipeScreen()),
-          ).then((_) => _loadRecipes());
+          ).then((_) {
+            _loadRecipes();
+            if (_pantryEnabled) {
+              _loadRecipesYouCanMake();
+            }
+          });
         },
         child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class _RecipeModelCard extends StatelessWidget {
+  final RecipeModel recipe;
+  final VoidCallback onTap;
+
+  const _RecipeModelCard({
+    required this.recipe,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  image: recipe.imageUrls?.isNotEmpty == true
+                      ? DecorationImage(
+                          image: NetworkImage(recipe.imageUrls!.first),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                ),
+                child: recipe.imageUrls?.isEmpty != false
+                    ? const Center(
+                        child: Icon(Icons.restaurant_menu, size: 48, color: Colors.grey),
+                      )
+                    : null,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    recipe.title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${recipe.totalTime} min',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                      const SizedBox(width: 12),
+                      Icon(Icons.people, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${recipe.servings} servings',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -6,6 +6,8 @@ import '../models/recipe_model.dart';
 import '../models/nutrition_model.dart';
 import '../services/recipe_service_supabase.dart';
 import '../services/ai_recipe_service.dart';
+import '../services/pantry_service.dart';
+import '../services/preferences_service.dart';
 import '../config/supabase_config.dart';
 import '../services/comment_service.dart';
 import '../models/comment_model.dart';
@@ -26,15 +28,64 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
   final _recipeService = RecipeServiceSupabase();
   final _commentService = CommentService();
   final _aiRecipeService = AiRecipeService();
+  final _pantryService = PantryService();
+  final _preferencesService = PreferencesService();
   bool _isLoading = true;
   List<CommentModel> _comments = [];
   final TextEditingController _commentController = TextEditingController();
   static const int _maxCommentLength = 255;
+  bool _pantryEnabled = false;
+  Map<String, bool> _ingredientAvailability = {}; // ingredient name -> has in pantry
 
   @override
   void initState() {
     super.initState();
     _loadRecipe();
+    _loadPantryStatus();
+  }
+
+  Future<void> _loadPantryStatus() async {
+    final isEnabled = await _preferencesService.isPantryEnabled();
+    setState(() {
+      _pantryEnabled = isEnabled;
+    });
+    if (isEnabled) {
+      await _checkIngredientAvailability();
+    }
+  }
+
+  Future<void> _checkIngredientAvailability() async {
+    if (!_pantryEnabled) return;
+    
+    try {
+      final pantryItems = await _pantryService.getPantryItems();
+      final pantryIngredientNames = pantryItems
+          .map((item) => item.ingredientName.toLowerCase().trim())
+          .toList();
+
+      final availability = <String, bool>{};
+      for (final ingredient in _recipe.ingredients) {
+        final ingredientName = ingredient.name.toLowerCase().trim();
+        bool found = false;
+        
+        for (final pantryName in pantryIngredientNames) {
+          if (pantryName == ingredientName ||
+              pantryName.contains(ingredientName) ||
+              ingredientName.contains(pantryName)) {
+            found = true;
+            break;
+          }
+        }
+        
+        availability[ingredient.name] = found;
+      }
+      
+      setState(() {
+        _ingredientAvailability = availability;
+      });
+    } catch (e) {
+      // Silently fail - this is an optional feature
+    }
   }
 
   @override
@@ -49,15 +100,20 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
     });
     
     final userId = SupabaseConfig.client.auth.currentUser?.id;
-    final recipe = await _recipeService.getRecipeById(widget.recipe.id, currentUserId: userId);
-    final comments = await _commentService.listComments(widget.recipe.id, currentUserId: userId);
-    
-    setState(() {
-      _recipe = recipe ?? widget.recipe;
-      _comments = comments;
-      _isLoading = false;
-    });
-  }
+      final recipe = await _recipeService.getRecipeById(widget.recipe.id, currentUserId: userId);
+      final comments = await _commentService.listComments(widget.recipe.id, currentUserId: userId);
+      
+      setState(() {
+        _recipe = recipe ?? widget.recipe;
+        _comments = comments;
+        _isLoading = false;
+      });
+      
+      // Check ingredient availability after loading recipe
+      if (_pantryEnabled) {
+        await _checkIngredientAvailability();
+      }
+    }
 
   Future<void> _toggleFavorite() async {
     // Optimistic update - toggle immediately
@@ -801,10 +857,24 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
                   const Text('Ingredients', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   ..._recipe.ingredients.map(
-                    (ingredient) => ListTile(
-                      leading: const Icon(Icons.check_circle_outline, color: Colors.green),
-                      title: Text('${ingredient.quantity}${ingredient.unit != null ? ' ${ingredient.unit}' : ''} ${ingredient.name}'),
-                    ),
+                    (ingredient) {
+                      final hasInPantry = _pantryEnabled && 
+                          (_ingredientAvailability[ingredient.name] ?? false);
+                      return ListTile(
+                        leading: Icon(
+                          hasInPantry ? Icons.check_circle : Icons.check_circle_outline,
+                          color: hasInPantry ? Colors.green : Colors.grey,
+                        ),
+                        title: Text('${ingredient.quantity}${ingredient.unit != null ? ' ${ingredient.unit}' : ''} ${ingredient.name}'),
+                        trailing: _pantryEnabled
+                            ? Icon(
+                                hasInPantry ? Icons.kitchen : Icons.kitchen_outlined,
+                                color: hasInPantry ? Colors.orange : Colors.grey,
+                                size: 20,
+                              )
+                            : null,
+                      );
+                    },
                   ),
                   const SizedBox(height: 24),
                   const Text('Instructions', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),

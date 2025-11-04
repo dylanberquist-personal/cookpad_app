@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/recipe.dart';
 import '../models/user_model.dart';
 import '../services/recipe_service.dart';
+import '../services/pantry_service.dart';
+import '../services/preferences_service.dart';
 import '../config/supabase_config.dart';
 import '../widgets/creator_profile_card.dart';
 
@@ -16,17 +18,66 @@ class RecipeDetailScreen extends StatefulWidget {
 
 class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   final RecipeService _recipeService = RecipeService();
+  final _pantryService = PantryService();
+  final _preferencesService = PreferencesService();
   final _supabase = SupabaseConfig.client;
   late Recipe _recipe;
   bool _isLoading = true;
   UserModel? _creator;
   bool _isLoadingCreator = false;
+  bool _pantryEnabled = false;
+  Map<String, bool> _ingredientAvailability = {}; // ingredient name -> has in pantry
 
   @override
   void initState() {
     super.initState();
     _loadRecipe();
     _loadCreator();
+    _loadPantryStatus();
+  }
+
+  Future<void> _loadPantryStatus() async {
+    final isEnabled = await _preferencesService.isPantryEnabled();
+    setState(() {
+      _pantryEnabled = isEnabled;
+    });
+    if (isEnabled) {
+      await _checkIngredientAvailability();
+    }
+  }
+
+  Future<void> _checkIngredientAvailability() async {
+    if (!_pantryEnabled) return;
+    
+    try {
+      final pantryItems = await _pantryService.getPantryItems();
+      final pantryIngredientNames = pantryItems
+          .map((item) => item.ingredientName.toLowerCase().trim())
+          .toList();
+
+      final availability = <String, bool>{};
+      for (final ingredient in _recipe.ingredients) {
+        final ingredientName = ingredient.name.toLowerCase().trim();
+        bool found = false;
+        
+        for (final pantryName in pantryIngredientNames) {
+          if (pantryName == ingredientName ||
+              pantryName.contains(ingredientName) ||
+              ingredientName.contains(pantryName)) {
+            found = true;
+            break;
+          }
+        }
+        
+        availability[ingredient.name] = found;
+      }
+      
+      setState(() {
+        _ingredientAvailability = availability;
+      });
+    } catch (e) {
+      // Silently fail - this is an optional feature
+    }
   }
 
   Future<void> _loadRecipe() async {
@@ -166,21 +217,35 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                   ),
                   const SizedBox(height: 16),
                   ..._recipe.ingredients.map(
-                    (ingredient) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.check_circle_outline, size: 20, color: Colors.green),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '${ingredient.quantity}${ingredient.unit != null ? ' ${ingredient.unit}' : ''} ${ingredient.name}',
-                              style: const TextStyle(fontSize: 16),
+                    (ingredient) {
+                      final hasInPantry = _pantryEnabled && 
+                          (_ingredientAvailability[ingredient.name] ?? false);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Row(
+                          children: [
+                            Icon(
+                              hasInPantry ? Icons.check_circle : Icons.check_circle_outline,
+                              size: 20,
+                              color: hasInPantry ? Colors.green : Colors.grey,
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${ingredient.quantity}${ingredient.unit != null ? ' ${ingredient.unit}' : ''} ${ingredient.name}',
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ),
+                            if (_pantryEnabled)
+                              Icon(
+                                hasInPantry ? Icons.kitchen : Icons.kitchen_outlined,
+                                color: hasInPantry ? Colors.orange : Colors.grey,
+                                size: 20,
+                              ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 32),
                   Text(

@@ -7,10 +7,13 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import '../../services/ai_recipe_service.dart';
 import '../../services/recipe_service_supabase.dart';
 import '../../services/auth_service.dart';
+import '../../services/pantry_service.dart';
+import '../../services/preferences_service.dart';
 import '../../config/supabase_config.dart';
 import '../../models/ai_chat_model.dart';
 import '../../models/recipe_model.dart';
 import '../../models/user_model.dart';
+import '../../models/pantry_item_model.dart';
 import 'recipe_detail_screen_new.dart';
 
 class GenerateRecipeScreen extends StatefulWidget {
@@ -22,10 +25,12 @@ class GenerateRecipeScreen extends StatefulWidget {
   State<GenerateRecipeScreen> createState() => _GenerateRecipeScreenState();
 }
 
-class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
+class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with WidgetsBindingObserver {
   final _aiService = AiRecipeService();
   final _recipeService = RecipeServiceSupabase();
   final _authService = AuthService();
+  final _pantryService = PantryService();
+  final _preferencesService = PreferencesService();
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   
@@ -38,12 +43,71 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
   Map<int, Map<String, dynamic>?> _recipeDataCache = {}; // Cache parsed recipe data by message index
   File? _selectedImage; // Store selected image for OCR
   bool _isProcessingOCR = false; // Track OCR processing state
+  bool _considerPantry = false; // Track if pantry should be considered
+  bool _pantryEnabled = false; // Track if pantry feature is enabled
+  List<PantryItemModel> _pantryItems = []; // Store pantry items
+  bool _isInitialized = false; // Track if widget is initialized
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadUserProfile();
     _initializeSession();
+    _loadPantryStatus().then((_) {
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Reload pantry status when app resumes
+      _loadPantryStatus();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload pantry status when dependencies change (including route changes)
+    // Only reload if widget is initialized to avoid unnecessary calls
+    if (_isInitialized) {
+      _loadPantryStatus();
+    }
+  }
+
+  Future<void> _loadPantryStatus() async {
+    final isEnabled = await _preferencesService.isPantryEnabled();
+    setState(() {
+      _pantryEnabled = isEnabled;
+    });
+    if (isEnabled) {
+      try {
+        final items = await _pantryService.getPantryItems();
+        setState(() {
+          _pantryItems = items;
+        });
+      } catch (e) {
+        // Silently fail - pantry items are optional
+      }
+    } else {
+      setState(() {
+        _pantryItems = [];
+      });
+    }
   }
 
   Future<void> _loadUserProfile() async {
@@ -57,12 +121,6 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
 
   Future<void> _initializeSession() async {
     final userId = SupabaseConfig.client.auth.currentUser?.id;
@@ -456,9 +514,16 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
     _scrollToBottom();
 
     try {
+      // Get pantry items if feature is enabled and user wants to consider them
+      List<PantryItemModel>? pantryItems;
+      if (_pantryEnabled && _considerPantry && _pantryItems.isNotEmpty) {
+        pantryItems = _pantryItems;
+      }
+
       final assistantResponse = await _aiService.generateRecipeChat(
         userMessage: userMessage,
         chatHistory: _messages,
+        pantryItems: pantryItems,
       );
 
       final assistantMsg = ChatMessageModel(
@@ -987,6 +1052,24 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
       appBar: AppBar(
         title: const Text('Generate Recipe'),
         actions: [
+          // Pantry toggle (only show if pantry feature is enabled)
+          if (_pantryEnabled)
+            Tooltip(
+              message: _considerPantry
+                  ? 'Using pantry items'
+                  : 'Not using pantry items',
+              child: IconButton(
+                icon: Icon(
+                  _considerPantry ? Icons.kitchen : Icons.kitchen_outlined,
+                  color: _considerPantry ? Colors.orange : Colors.grey,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _considerPantry = !_considerPantry;
+                  });
+                },
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.add),
             onPressed: _startNewChat,

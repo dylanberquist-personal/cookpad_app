@@ -171,6 +171,78 @@ The app includes test infrastructure. Run tests with:
 flutter test
 ```
 
+## 📱 Installing on Android Phone (Without USB Connection)
+
+To test your app on an Android phone without connecting it directly to your computer, follow these steps:
+
+### Step 1: Build the Release APK
+
+Open a terminal in your project directory and run:
+```bash
+flutter build apk --release
+```
+
+This will create an APK file at:
+```
+build/app/outputs/flutter-apk/app-release.apk
+```
+
+### Step 2: Transfer the APK to Your Phone
+
+You have several options to transfer the APK:
+
+**Option A: Cloud Storage (Recommended)**
+1. Upload `app-release.apk` to Google Drive, Dropbox, or OneDrive
+2. Open the cloud storage app on your phone
+3. Download the APK file to your phone
+
+**Option B: Email**
+1. Email the APK file to yourself
+2. Open the email on your phone
+3. Download the attachment
+
+**Option C: Local Network Sharing**
+1. Use a file sharing service like ShareIt, Send Anywhere, or AirDroid
+2. Or set up a local web server on your computer and access it from your phone's browser
+
+**Option D: USB Drive**
+1. Copy the APK to a USB drive
+2. Use a USB OTG adapter to connect the drive to your phone
+
+### Step 3: Enable Unknown Sources on Your Phone
+
+Before installing, you need to allow installation from unknown sources:
+
+1. Go to **Settings** > **Security** (or **Settings** > **Apps** > **Special access**)
+2. Enable **"Install unknown apps"** or **"Unknown sources"**
+3. If prompted, select the app you'll use to install the APK (e.g., Files app, Chrome)
+
+**Note:** On newer Android versions, you may need to enable this permission for the specific app you're using to install the APK.
+
+### Step 4: Install the APK
+
+1. Open the file manager app on your phone
+2. Navigate to where you downloaded the APK (usually in the Downloads folder)
+3. Tap on `app-release.apk`
+4. Tap **"Install"** when prompted
+5. Wait for the installation to complete
+6. Tap **"Open"** to launch the app
+
+### Alternative: Build App Bundle (AAB) for Google Play
+
+If you plan to distribute via Google Play Store (even for internal testing), build an AAB instead:
+```bash
+flutter build appbundle --release
+```
+
+This creates `build/app/outputs/bundle/release/app-release.aab` which you can upload to Google Play Console for internal testing track distribution.
+
+### Troubleshooting
+
+- **"App not installed" error**: Make sure you uninstalled any previous debug versions first
+- **"Installation blocked"**: Check that "Unknown sources" is enabled
+- **APK not found**: Check the build output path or search for `.apk` files in your project directory
+
 ## 📝 Notes
 
 - The app uses Supabase for backend (database, auth, storage)

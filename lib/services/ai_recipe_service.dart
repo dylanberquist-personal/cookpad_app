@@ -671,4 +671,55 @@ NEVER return "1 serving" or "per serving" - always include specific units.
       throw Exception('Error regenerating nutrition info: $e');
     }
   }
+
+  /// Generates a prompt asking the user how they want to change a recipe being remixed
+  Future<String> generateRemixPrompt({
+    required String recipeTitle,
+    required List<ChatMessageModel> chatHistory,
+  }) async {
+    final systemMessage = '''You are a helpful recipe generation assistant. The user has shared a recipe they want to remix/change. 
+
+Your job is to ask them how they would like to modify the recipe. Be friendly and helpful, and suggest specific aspects they might want to change (ingredients, cooking method, difficulty, time, servings, dietary restrictions, etc.).
+
+Keep your response brief and conversational. Ask something like "How would you like to change this recipe?" or "What aspects of this recipe would you like to modify?"''';
+
+    final messages = [
+      {'role': 'system', 'content': systemMessage},
+      ...chatHistory.map((m) => {
+            'role': m.role,
+            'content': m.content,
+          }),
+    ];
+
+    try {
+      final response = await http.post(
+        Uri.parse(_openAiBaseUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_openAiApiKey',
+        },
+        body: jsonEncode({
+          'model': 'gpt-4-turbo-preview',
+          'messages': messages,
+          'temperature': 0.7,
+          'max_tokens': 200,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final choices = data['choices'] as List;
+        if (choices.isNotEmpty) {
+          final message = choices[0]['message'] as Map<String, dynamic>;
+          return message['content'] as String;
+        }
+      }
+
+      // Fallback response if API call fails
+      return 'How would you like to change this recipe? You can modify ingredients, cooking methods, difficulty, time, servings, or add dietary restrictions.';
+    } catch (e) {
+      // Fallback response if there's an error
+      return 'How would you like to change this recipe? You can modify ingredients, cooking methods, difficulty, time, servings, or add dietary restrictions.';
+    }
+  }
 }

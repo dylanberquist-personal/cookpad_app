@@ -10,6 +10,7 @@ import '../config/supabase_config.dart';
 import '../services/comment_service.dart';
 import '../models/comment_model.dart';
 import '../widgets/creator_profile_card.dart';
+import 'main_navigation.dart';
 
 class RecipeDetailScreenNew extends StatefulWidget {
   final RecipeModel recipe;
@@ -544,6 +545,18 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
     ).then((_) => _loadRecipe()); // Reload recipe when returning
   }
 
+  void _remixRecipe() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (context) => MainNavigation(
+          initialIndex: 2,
+          remixRecipe: _recipe,
+        ),
+      ),
+      (route) => false,
+    );
+  }
+
   Future<void> _submitComment() async {
     final text = _commentController.text.trim();
     if (text.isEmpty) return;
@@ -677,6 +690,20 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
                     ),
             ),
             actions: [
+              // Remix button (always visible)
+              Container(
+                margin: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.5),
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.auto_fix_high),
+                  color: Colors.white,
+                  onPressed: _remixRecipe,
+                  tooltip: 'Remix Recipe',
+                ),
+              ),
               // Show add image button if user is authenticated (anyone can add images)
               if (SupabaseConfig.client.auth.currentUser != null)
                 Container(

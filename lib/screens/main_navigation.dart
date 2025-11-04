@@ -4,11 +4,13 @@ import 'search_screen_new.dart';
 import 'generate_recipe_screen.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
+import '../models/recipe_model.dart';
 
 class MainNavigation extends StatefulWidget {
   final int initialIndex;
+  final RecipeModel? remixRecipe;
   
-  const MainNavigation({super.key, this.initialIndex = 0});
+  const MainNavigation({super.key, this.initialIndex = 0, this.remixRecipe});
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
@@ -16,17 +18,20 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   late int _currentIndex;
+  RecipeModel? _remixRecipe;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    // Store remixRecipe only on initial load
+    _remixRecipe = widget.remixRecipe;
   }
 
-  final List<Widget> _screens = [
+  List<Widget> get _screens => [
     const FeedScreen(),
     const SearchScreenNew(),
-    const GenerateRecipeScreen(),
+    GenerateRecipeScreen(remixRecipe: _remixRecipe),
     const NotificationsScreen(),
     const ProfileScreen(),
   ];

@@ -12,7 +12,9 @@ import '../../models/user_model.dart';
 import 'recipe_detail_screen_new.dart';
 
 class GenerateRecipeScreen extends StatefulWidget {
-  const GenerateRecipeScreen({super.key});
+  final RecipeModel? remixRecipe;
+
+  const GenerateRecipeScreen({super.key, this.remixRecipe});
 
   @override
   State<GenerateRecipeScreen> createState() => _GenerateRecipeScreenState();
@@ -30,6 +32,7 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
   UserModel? _currentUser;
   bool _isLoading = false;
   bool _isSaving = false;
+  bool _remixRecipeSent = false; // Track if remix recipe has been sent
   Map<int, Map<String, dynamic>?> _recipeDataCache = {}; // Cache parsed recipe data by message index
 
   @override
@@ -68,6 +71,13 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
         _messages = session.messages;
         _recipeDataCache = {};
       });
+      
+      // If remixRecipe is provided and hasn't been sent yet, send it as the first message
+      if (widget.remixRecipe != null && !_remixRecipeSent && _messages.isEmpty) {
+        await _sendRemixRecipe();
+        _remixRecipeSent = true;
+      }
+      
       // Parse all messages for recipes
       for (int i = 0; i < _messages.length; i++) {
         _parseRecipeFromMessage(i);
@@ -79,6 +89,92 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
         );
       }
     }
+  }
+
+  Future<void> _sendRemixRecipe() async {
+    if (widget.remixRecipe == null || _currentSession == null) return;
+
+    // Format recipe as a user message (recipe card format)
+    final recipe = widget.remixRecipe!;
+    final recipeMessage = _formatRecipeAsMessage(recipe);
+
+    // Add user message
+    final userMsg = ChatMessageModel(
+      role: 'user',
+      content: recipeMessage,
+      timestamp: DateTime.now(),
+    );
+
+    setState(() {
+      _messages.add(userMsg);
+      _isLoading = true;
+    });
+
+    _scrollToBottom();
+
+    try {
+      // Get AI response asking how to change the recipe
+      final assistantResponse = await _aiService.generateRemixPrompt(
+        recipeTitle: recipe.title,
+        chatHistory: _messages,
+      );
+
+      final assistantMsg = ChatMessageModel(
+        role: 'assistant',
+        content: assistantResponse,
+        timestamp: DateTime.now(),
+      );
+
+      setState(() {
+        _messages.add(assistantMsg);
+        _isLoading = false;
+      });
+
+      // Update session
+      if (_currentSession != null) {
+        await _aiService.updateChatSession(
+          sessionId: _currentSession!.id,
+          messages: [..._messages],
+        );
+      }
+
+      _scrollToBottom();
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  String _formatRecipeAsMessage(RecipeModel recipe) {
+    // Format recipe as a JSON structure that can be displayed as a recipe card
+    final recipeJson = {
+      'title': recipe.title,
+      'description': recipe.description,
+      'ingredients': recipe.ingredients.map((ing) => {
+        'name': ing.name,
+        'quantity': ing.quantity,
+        'unit': ing.unit,
+      }).toList(),
+      'instructions': recipe.instructions.map((inst) => {
+        'step_number': inst.stepNumber,
+        'instruction': inst.instruction,
+      }).toList(),
+      'prep_time': recipe.prepTime,
+      'cook_time': recipe.cookTime,
+      'total_time': recipe.totalTime,
+      'servings': recipe.servings,
+      'difficulty_level': recipe.difficultyLevel.name,
+      'meal_type': recipe.mealType.name,
+      'cuisine_type': recipe.cuisineType,
+      'tags': recipe.tags,
+    };
+
+    // Return as JSON string wrapped in markdown code block
+    return '```json\n${jsonEncode(recipeJson)}\n```';
   }
 
   Future<void> _startNewChat() async {
@@ -347,7 +443,8 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
   void _parseRecipeFromMessage(int messageIndex) {
     if (messageIndex >= _messages.length) return;
     final message = _messages[messageIndex];
-    if (message.role != 'assistant') return;
+    // Parse recipe from both user and assistant messages
+    if (message.role != 'assistant' && message.role != 'user') return;
 
     // Try to extract JSON from message
     try {
@@ -387,7 +484,8 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
     // Also check if message contains recipe-like structure
     if (index >= _messages.length) return false;
     final message = _messages[index];
-    if (message.role != 'assistant') return false;
+    // Check both user and assistant messages for recipes
+    if (message.role != 'assistant' && message.role != 'user') return false;
     
     final content = message.content.toLowerCase();
     // Check for recipe indicators
@@ -794,11 +892,12 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
                       }
                       final message = _messages[index];
                       final isRecipe = _isRecipeMessage(index);
+                      final isUserMessage = message.role == 'user';
                       return _ChatBubble(
                         message: message,
                         isRecipe: isRecipe,
                         recipeData: _recipeDataCache[index],
-                        isSaved: _currentSession?.recipeId != null,
+                        isSaved: _currentSession?.recipeId != null && !isUserMessage,
                         onSave: () => _showSaveRecipeDialog(index),
                         onView: _viewRecipe,
                         isSaving: _isSaving && index == _messages.length - 1,
@@ -874,14 +973,15 @@ class _ChatBubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
-                if (isRecipe && !isUser)
+                if (isRecipe)
                   _RecipeCard(
                     message: message,
                     recipeData: recipeData,
                     isSaved: isSaved,
-                    onSave: onSave,
+                    onSave: isUser ? () {} : onSave, // Don't allow saving user's remix recipe
                     onView: onView,
                     isSaving: isSaving,
+                    isUserMessage: isUser,
                   )
                 else
                   Container(
@@ -926,6 +1026,7 @@ class _RecipeCard extends StatefulWidget {
   final VoidCallback onSave;
   final VoidCallback onView;
   final bool isSaving;
+  final bool isUserMessage;
 
   const _RecipeCard({
     required this.message,
@@ -934,6 +1035,7 @@ class _RecipeCard extends StatefulWidget {
     required this.onSave,
     required this.onView,
     required this.isSaving,
+    this.isUserMessage = false,
   });
 
   @override
@@ -1237,51 +1339,79 @@ class _RecipeCardState extends State<_RecipeCard> {
             ),
           ),
           
-          // Action buttons
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey[50],
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(16),
-                bottomRight: Radius.circular(16),
+          // Action buttons (only show for assistant messages, not user remix messages)
+          if (!widget.isUserMessage)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(16),
+                  bottomRight: Radius.circular(16),
+                ),
               ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (widget.isSaved)
-                  ElevatedButton.icon(
-                    onPressed: widget.isSaving ? null : widget.onView,
-                    icon: const Icon(Icons.visibility, size: 18),
-                    label: const Text('View Recipe'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (widget.isSaved)
+                    ElevatedButton.icon(
+                      onPressed: widget.isSaving ? null : widget.onView,
+                      icon: const Icon(Icons.visibility, size: 18),
+                      label: const Text('View Recipe'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                      ),
+                    )
+                  else
+                    ElevatedButton.icon(
+                      onPressed: widget.isSaving ? null : widget.onSave,
+                      icon: widget.isSaving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(Icons.save, size: 18),
+                      label: Text(widget.isSaving ? 'Saving...' : 'Save Recipe'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                      ),
                     ),
-                  )
-                else
-                  ElevatedButton.icon(
-                    onPressed: widget.isSaving ? null : widget.onSave,
-                    icon: widget.isSaving
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : const Icon(Icons.save, size: 18),
-                    label: Text(widget.isSaving ? 'Saving...' : 'Save Recipe'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
+                ],
+              ),
+            )
+          else
+            // For user messages, show a small label indicating it's the original recipe
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(16),
+                  bottomRight: Radius.circular(16),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.auto_fix_high, size: 16, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Original Recipe (Remix)',
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-              ],
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );

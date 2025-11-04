@@ -4,9 +4,11 @@ import 'package:flutter/material.dart' hide Step;
 import 'package:image_picker/image_picker.dart';
 import '../../services/ai_recipe_service.dart';
 import '../../services/recipe_service_supabase.dart';
+import '../../services/auth_service.dart';
 import '../../config/supabase_config.dart';
 import '../../models/ai_chat_model.dart';
 import '../../models/recipe_model.dart';
+import '../../models/user_model.dart';
 import 'recipe_detail_screen_new.dart';
 
 class GenerateRecipeScreen extends StatefulWidget {
@@ -19,11 +21,13 @@ class GenerateRecipeScreen extends StatefulWidget {
 class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
   final _aiService = AiRecipeService();
   final _recipeService = RecipeServiceSupabase();
+  final _authService = AuthService();
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   
   AiChatSessionModel? _currentSession;
   List<ChatMessageModel> _messages = [];
+  UserModel? _currentUser;
   bool _isLoading = false;
   bool _isSaving = false;
   Map<int, Map<String, dynamic>?> _recipeDataCache = {}; // Cache parsed recipe data by message index
@@ -31,7 +35,19 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
   @override
   void initState() {
     super.initState();
+    _loadUserProfile();
     _initializeSession();
+  }
+
+  Future<void> _loadUserProfile() async {
+    try {
+      final user = await _authService.getCurrentUserProfile();
+      setState(() {
+        _currentUser = user;
+      });
+    } catch (e) {
+      print('Error loading user profile: $e');
+    }
   }
 
   @override
@@ -786,6 +802,7 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
                         onSave: () => _showSaveRecipeDialog(index),
                         onView: _viewRecipe,
                         isSaving: _isSaving && index == _messages.length - 1,
+                        userProfilePictureUrl: _currentUser?.profilePictureUrl,
                       );
                     },
                   ),
@@ -809,6 +826,7 @@ class _ChatBubble extends StatelessWidget {
   final VoidCallback onSave;
   final VoidCallback onView;
   final bool isSaving;
+  final String? userProfilePictureUrl;
 
   const _ChatBubble({
     required this.message,
@@ -818,6 +836,7 @@ class _ChatBubble extends StatelessWidget {
     required this.onSave,
     required this.onView,
     required this.isSaving,
+    this.userProfilePictureUrl,
   });
 
   @override
@@ -831,8 +850,23 @@ class _ChatBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isUser) ...[
-            const CircleAvatar(
-              child: Icon(Icons.smart_toy, size: 20),
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.orange.withOpacity(0.3),
+                  width: 1.5,
+                ),
+              ),
+              child: CircleAvatar(
+                radius: 20,
+                backgroundColor: Colors.white,
+                backgroundImage: const AssetImage('Assets/Logo_without_text.png'),
+                onBackgroundImageError: (exception, stackTrace) {
+                  // Fallback handled by child
+                },
+                child: null,
+              ),
             ),
             const SizedBox(width: 8),
           ],
@@ -868,8 +902,15 @@ class _ChatBubble extends StatelessWidget {
           ),
           if (isUser) ...[
             const SizedBox(width: 8),
-            const CircleAvatar(
-              child: Icon(Icons.person, size: 20),
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: Colors.grey[300],
+              backgroundImage: userProfilePictureUrl != null
+                  ? NetworkImage(userProfilePictureUrl!)
+                  : null,
+              child: userProfilePictureUrl == null
+                  ? const Icon(Icons.person, size: 20)
+                  : null,
             ),
           ],
         ],
@@ -1414,8 +1455,23 @@ class _LoadingIndicatorState extends State<_LoadingIndicator>
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          const CircleAvatar(
-            child: Icon(Icons.smart_toy, size: 20),
+          Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.orange.withOpacity(0.3),
+                width: 1.5,
+              ),
+            ),
+            child: CircleAvatar(
+              radius: 20,
+              backgroundColor: Colors.white,
+              backgroundImage: const AssetImage('Assets/Logo_without_text.png'),
+              onBackgroundImageError: (exception, stackTrace) {
+                // Fallback handled by child
+              },
+              child: null,
+            ),
           ),
           const SizedBox(width: 8),
           FadeTransition(

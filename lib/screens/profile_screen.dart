@@ -3,6 +3,8 @@ import '../services/auth_service.dart';
 import '../config/supabase_config.dart';
 import 'auth/login_screen.dart';
 import 'my_recipes_screen.dart';
+import 'pantry_screen.dart';
+import 'my_profile_detail_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -19,6 +21,18 @@ class ProfileScreen extends StatelessWidget {
           ? const Center(child: Text('Not logged in'))
           : ListView(
               children: [
+                ListTile(
+                  title: const Text('My Profile'),
+                  leading: const Icon(Icons.person),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => MyProfileDetailScreen(userId: userId),
+                      ),
+                    );
+                  },
+                ),
                 ListTile(
                   title: const Text('My Recipes'),
                   leading: const Icon(Icons.restaurant_menu),
@@ -48,6 +62,16 @@ class ProfileScreen extends StatelessWidget {
                   leading: const Icon(Icons.shopping_cart),
                   onTap: () {
                     // TODO: Navigate to shopping lists
+                  },
+                ),
+                ListTile(
+                  title: const Text('Pantry'),
+                  leading: const Icon(Icons.kitchen),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const PantryScreen()),
+                    );
                   },
                 ),
                 ListTile(

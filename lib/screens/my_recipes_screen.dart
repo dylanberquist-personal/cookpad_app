@@ -3,6 +3,7 @@ import '../services/recipe_service_supabase.dart';
 import '../models/recipe_model.dart';
 import '../config/supabase_config.dart';
 import 'recipe_detail_screen_new.dart';
+import 'main_navigation.dart';
 
 class MyRecipesScreen extends StatefulWidget {
   const MyRecipesScreen({super.key});
@@ -112,40 +113,42 @@ class _MyRecipesScreenState extends State<MyRecipesScreen> {
             // Already on profile/my recipes
             return;
           }
-          // Pop back to main navigation (which is the first route)
-          Navigator.of(context).popUntil((route) => route.isFirst);
-          // Then use a post-frame callback to switch tabs
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            // Find MainNavigation state and switch tab
-            // This is a workaround - in a real app you might use a state management solution
-            // For now, we'll just pop and let the user navigate manually
-          });
+          
+          if (mounted) {
+            // Navigate back to main navigation with the selected index
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (context) => MainNavigation(initialIndex: index),
+              ),
+              (route) => false,
+            );
+          }
         },
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
-            label: 'Home',
+            label: '',
           ),
           NavigationDestination(
             icon: Icon(Icons.search_outlined),
             selectedIcon: Icon(Icons.search),
-            label: 'Search',
+            label: '',
           ),
           NavigationDestination(
             icon: Icon(Icons.auto_awesome_outlined),
             selectedIcon: Icon(Icons.auto_awesome),
-            label: 'Generate',
+            label: '',
           ),
           NavigationDestination(
-            icon: Icon(Icons.kitchen_outlined),
-            selectedIcon: Icon(Icons.kitchen),
-            label: 'Pantry',
+            icon: Icon(Icons.notifications_outlined),
+            selectedIcon: Icon(Icons.notifications),
+            label: '',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person),
-            label: 'Profile',
+            label: '',
           ),
         ],
       ),

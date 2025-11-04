@@ -5,12 +5,15 @@ import 'dart:io';
 import '../services/auth_service.dart';
 import '../services/follow_service.dart';
 import '../services/recipe_service_supabase.dart';
+import '../services/collection_service.dart';
 import '../models/user_model.dart';
 import '../models/recipe_model.dart';
+import '../models/collection_model.dart';
 import '../config/supabase_config.dart';
 import '../widgets/creator_profile_card.dart';
 import 'main_navigation.dart';
 import 'recipe_detail_screen_new.dart';
+import 'collection_detail_screen.dart';
 
 class MyProfileDetailScreen extends StatefulWidget {
   final String userId;
@@ -28,9 +31,11 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
   final _authService = AuthService();
   final _followService = FollowService();
   final _recipeService = RecipeServiceSupabase();
+  final _collectionService = CollectionService();
   final _supabase = SupabaseConfig.client;
   final _scrollController = ScrollController();
   final GlobalKey _recipesKey = GlobalKey();
+  final GlobalKey _collectionsKey = GlobalKey();
   
   UserModel? _userProfile;
   bool _isLoading = true;
@@ -42,6 +47,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
   Color? _bannerColor;
   int _currentNavIndex = 4; // Profile is index 4
   List<RecipeModel> _publicRecipes = [];
+  List<CollectionModel> _publicCollections = [];
 
   // Editable fields
   final _bioController = TextEditingController();
@@ -111,6 +117,9 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
 
       // Load public recipes
       await _loadPublicRecipes();
+
+      // Load public collections
+      await _loadPublicCollections();
 
       // Load banner color from profile picture
       await _loadBannerColor();
@@ -243,6 +252,17 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
       });
     } catch (e) {
       print('Error loading public recipes: $e');
+    }
+  }
+
+  Future<void> _loadPublicCollections() async {
+    try {
+      final collections = await _collectionService.getPublicCollections(widget.userId);
+      setState(() {
+        _publicCollections = collections;
+      });
+    } catch (e) {
+      print('Error loading public collections: $e');
     }
   }
 
@@ -1007,6 +1027,61 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                 ),
               ),
             ],
+
+            // Public Collections Section
+            if (_publicCollections.isNotEmpty) ...[
+              Container(
+                key: _collectionsKey,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.folder, size: 24, color: Theme.of(context).primaryColor),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Public Collections',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        childAspectRatio: 0.85,
+                      ),
+                      itemCount: _publicCollections.length,
+                      itemBuilder: (context, index) {
+                        final collection = _publicCollections[index];
+                        return _CollectionCard(
+                          collection: collection,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => CollectionDetailScreen(
+                                  collection: collection,
+                                  isOwner: false,
+                                ),
+                              ),
+                            ).then((_) => _loadPublicCollections());
+                          },
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -1270,6 +1345,100 @@ class _RecipeCard extends StatelessWidget {
                       Icon(Icons.star, size: 14, color: Colors.grey[600]),
                       const SizedBox(width: 4),
                       Text('${recipe.averageRating.toStringAsFixed(1)}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CollectionCard extends StatelessWidget {
+  final CollectionModel collection;
+  final VoidCallback onTap;
+
+  const _CollectionCard({
+    required this.collection,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Icon/Image placeholder
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Theme.of(context).primaryColor.withOpacity(0.7),
+                      Theme.of(context).primaryColor.withOpacity(0.4),
+                    ],
+                  ),
+                ),
+                child: Center(
+                  child: Icon(
+                    Icons.folder,
+                    size: 48,
+                    color: Colors.white.withOpacity(0.9),
+                  ),
+                ),
+              ),
+            ),
+            // Info section
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    collection.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.restaurant_menu,
+                        size: 14,
+                        color: Colors.grey[600],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${collection.recipeCount} recipe${collection.recipeCount != 1 ? 's' : ''}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.public,
+                        size: 14,
+                        color: Colors.grey[600],
+                      ),
                     ],
                   ),
                 ],

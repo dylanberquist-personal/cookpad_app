@@ -6,6 +6,7 @@ import 'my_recipes_screen.dart';
 import 'pantry_screen.dart';
 import 'my_profile_detail_screen.dart';
 import 'favorites_screen.dart';
+import 'collections_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -58,7 +59,12 @@ class ProfileScreen extends StatelessWidget {
                   title: const Text('Collections'),
                   leading: const Icon(Icons.folder),
                   onTap: () {
-                    // TODO: Navigate to collections
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const CollectionsScreen(),
+                      ),
+                    );
                   },
                 ),
                 ListTile(

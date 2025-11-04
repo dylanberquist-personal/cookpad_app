@@ -8,9 +8,11 @@ import '../services/recipe_service_supabase.dart';
 import '../services/ai_recipe_service.dart';
 import '../services/pantry_service.dart';
 import '../services/preferences_service.dart';
+import '../services/collection_service.dart';
 import '../config/supabase_config.dart';
 import '../services/comment_service.dart';
 import '../models/comment_model.dart';
+import '../models/collection_model.dart';
 import '../widgets/creator_profile_card.dart';
 import 'main_navigation.dart';
 
@@ -30,6 +32,7 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
   final _aiRecipeService = AiRecipeService();
   final _pantryService = PantryService();
   final _preferencesService = PreferencesService();
+  final _collectionService = CollectionService();
   bool _isLoading = true;
   List<CommentModel> _comments = [];
   final TextEditingController _commentController = TextEditingController();
@@ -196,6 +199,64 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
   Future<void> _rateRecipe(int rating) async {
     await _recipeService.rateRecipe(_recipe.id, rating);
     await _loadRecipe();
+  }
+
+  Future<void> _showAddToCollectionDialog() async {
+    try {
+      final userId = SupabaseConfig.client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // Get user's collections
+      final collections = await _collectionService.getUserCollections(userId);
+      
+      // Check which collections already contain this recipe
+      final collectionsWithRecipe = <String>{};
+      for (var collection in collections) {
+        final hasRecipe = await _collectionService.isRecipeInCollection(collection.id, _recipe.id);
+        if (hasRecipe) {
+          collectionsWithRecipe.add(collection.id);
+        }
+      }
+
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (context) => _AddToCollectionDialog(
+          collections: collections,
+          recipeId: _recipe.id,
+          collectionsWithRecipe: collectionsWithRecipe,
+          onCollectionSelected: (collectionId) async {
+            try {
+              await _collectionService.addRecipeToCollection(collectionId, _recipe.id);
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error: ${e.toString()}')),
+                );
+              }
+            }
+          },
+          onCollectionRemoved: (collectionId) async {
+            try {
+              await _collectionService.removeRecipeFromCollection(collectionId, _recipe.id);
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error: ${e.toString()}')),
+                );
+              }
+            }
+          },
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading collections: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   String _formatTimestamp(DateTime dateTime) {
@@ -801,6 +862,21 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
                 onPressed: _toggleFavorite,
                 ),
               ),
+              // Add to Collection button (only if authenticated)
+              if (SupabaseConfig.client.auth.currentUser != null)
+                Container(
+                  margin: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.folder),
+                    color: Colors.white,
+                    onPressed: _showAddToCollectionDialog,
+                    tooltip: 'Add to Collection',
+                  ),
+                ),
             ],
           ),
           SliverToBoxAdapter(
@@ -2019,5 +2095,129 @@ class _NutritionInfoDialogState extends State<_NutritionInfoDialog> {
   String getMineralUnit(String mineral) {
     // Most minerals are in mg
     return 'mg';
+  }
+}
+
+class _AddToCollectionDialog extends StatefulWidget {
+  final List<CollectionModel> collections;
+  final String recipeId;
+  final Set<String> collectionsWithRecipe;
+  final Function(String) onCollectionSelected;
+  final Function(String) onCollectionRemoved;
+
+  const _AddToCollectionDialog({
+    required this.collections,
+    required this.recipeId,
+    required this.collectionsWithRecipe,
+    required this.onCollectionSelected,
+    required this.onCollectionRemoved,
+  });
+
+  @override
+  State<_AddToCollectionDialog> createState() => _AddToCollectionDialogState();
+}
+
+class _AddToCollectionDialogState extends State<_AddToCollectionDialog> {
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 500),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Text(
+                    'Add to Collection',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: widget.collections.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.folder_outlined, size: 48, color: Colors.grey[400]),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No collections yet',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Create a collection first',
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: widget.collections.length,
+                      itemBuilder: (context, index) {
+                        final collection = widget.collections[index];
+                        final isInCollection = widget.collectionsWithRecipe.contains(collection.id);
+                        return CheckboxListTile(
+                          title: Text(collection.name),
+                          subtitle: Text(
+                            '${collection.recipeCount} recipe${collection.recipeCount != 1 ? 's' : ''}',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                          value: isInCollection,
+                          onChanged: (value) {
+                            if (value == true) {
+                              widget.onCollectionSelected(collection.id);
+                            } else {
+                              widget.onCollectionRemoved(collection.id);
+                            }
+                            setState(() {
+                              if (value == true) {
+                                widget.collectionsWithRecipe.add(collection.id);
+                              } else {
+                                widget.collectionsWithRecipe.remove(collection.id);
+                              }
+                            });
+                          },
+                          secondary: Icon(
+                            isInCollection ? Icons.folder : Icons.folder_outlined,
+                            color: isInCollection ? Theme.of(context).primaryColor : Colors.grey,
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -2,9 +2,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/recipe_model.dart';
 import '../models/user_model.dart';
+import 'collection_service.dart';
 
 class RecipeServiceSupabase {
   final _supabase = SupabaseConfig.client;
+  final _collectionService = CollectionService();
 
   Future<List<RecipeModel>> getRecipes({
     String? userId,
@@ -430,16 +432,54 @@ class RecipeServiceSupabase {
         .maybeSingle();
 
     if (existing != null) {
+      // Remove from favorites
       await _supabase
           .from('favorites')
           .delete()
           .eq('user_id', userId)
           .eq('recipe_id', recipeId);
+      
+      // Remove from Favorites collection
+      try {
+        final favoritesCollection = await _collectionService.getOrCreateFavoritesCollection();
+        final isInCollection = await _collectionService.isRecipeInCollection(
+          favoritesCollection.id,
+          recipeId,
+        );
+        if (isInCollection) {
+          await _collectionService.removeRecipeFromCollection(
+            favoritesCollection.id,
+            recipeId,
+          );
+        }
+      } catch (e) {
+        // Silently fail - don't break favorite toggle if collection sync fails
+        print('Warning: Failed to sync with Favorites collection: $e');
+      }
     } else {
+      // Add to favorites
       await _supabase.from('favorites').insert({
         'user_id': userId,
         'recipe_id': recipeId,
       });
+      
+      // Add to Favorites collection
+      try {
+        final favoritesCollection = await _collectionService.getOrCreateFavoritesCollection();
+        final isInCollection = await _collectionService.isRecipeInCollection(
+          favoritesCollection.id,
+          recipeId,
+        );
+        if (!isInCollection) {
+          await _collectionService.addRecipeToCollection(
+            favoritesCollection.id,
+            recipeId,
+          );
+        }
+      } catch (e) {
+        // Silently fail - don't break favorite toggle if collection sync fails
+        print('Warning: Failed to sync with Favorites collection: $e');
+      }
     }
   }
 

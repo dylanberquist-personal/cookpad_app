@@ -78,7 +78,7 @@ class _MainNavigationState extends State<MainNavigation> {
           ),
         ],
       ),
-      floatingActionButton: _currentIndex == 2
+      floatingActionButton: _currentIndex == 2 || _currentIndex == 1
           ? null
           : FloatingActionButton(
               onPressed: () {

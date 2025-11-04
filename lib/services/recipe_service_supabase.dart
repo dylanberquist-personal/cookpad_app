@@ -591,16 +591,46 @@ class RecipeServiceSupabase {
   }
 
   Future<List<RecipeModel>> searchRecipes(String query) async {
-    final response = await _supabase
+    final currentUserId = _supabase.auth.currentUser?.id;
+    
+    // Get public recipes matching query
+    final publicResponse = await _supabase
         .from('recipes')
         .select('*, user:users!user_id(*)')
         .or('title.ilike.%$query%,description.ilike.%$query%,tags.cs.{${query.toLowerCase()}}')
         .eq('is_public', true)
         .order('created_at', ascending: false)
         .limit(50);
+    
+    List<dynamic> publicRecipes = publicResponse as List;
+    List<dynamic> privateRecipes = [];
+    
+    // If user is logged in, also get their private recipes
+    if (currentUserId != null) {
+      final privateResponse = await _supabase
+          .from('recipes')
+          .select('*, user:users!user_id(*)')
+          .or('title.ilike.%$query%,description.ilike.%$query%,tags.cs.{${query.toLowerCase()}}')
+          .eq('is_public', false)
+          .eq('user_id', currentUserId)
+          .order('created_at', ascending: false)
+          .limit(50);
+      privateRecipes = privateResponse as List;
+    }
+    
+    // Combine results and remove duplicates
+    final Map<String, dynamic> uniqueRecipes = {};
+    for (var recipe in publicRecipes) {
+      uniqueRecipes[recipe['id'] as String] = recipe;
+    }
+    for (var recipe in privateRecipes) {
+      uniqueRecipes[recipe['id'] as String] = recipe;
+    }
+    
+    final response = uniqueRecipes.values.toList();
 
-    final recipes = (response as List)
-        .map((json) => _recipeFromSupabaseJson(json))
+    final recipes = response
+        .map((json) => _recipeFromSupabaseJson(json as Map<String, dynamic>))
         .toList();
 
     // Fetch images for all recipes in batch
@@ -750,5 +780,18 @@ class RecipeServiceSupabase {
         'chef_score': 0.0,
       });
     }
+  }
+
+  Future<List<UserModel>> searchUsers(String query) async {
+    final response = await _supabase
+        .from('users')
+        .select()
+        .or('username.ilike.%$query%,display_name.ilike.%$query%')
+        .order('chef_score', ascending: false)
+        .limit(20);
+    
+    return (response as List)
+        .map((json) => UserModel.fromJson(json))
+        .toList();
   }
 }

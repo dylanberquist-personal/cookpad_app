@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart' hide Step;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../../services/ai_recipe_service.dart';
 import '../../services/recipe_service_supabase.dart';
 import '../../services/auth_service.dart';
@@ -34,6 +36,8 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
   bool _isSaving = false;
   bool _remixRecipeSent = false; // Track if remix recipe has been sent
   Map<int, Map<String, dynamic>?> _recipeDataCache = {}; // Cache parsed recipe data by message index
+  File? _selectedImage; // Store selected image for OCR
+  bool _isProcessingOCR = false; // Track OCR processing state
 
   @override
   void initState() {
@@ -379,13 +383,62 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
   }
 
   Future<void> _sendMessage() async {
-    if (_messageController.text.trim().isEmpty || _isLoading) return;
+    if ((_messageController.text.trim().isEmpty && _selectedImage == null) || _isLoading) return;
     if (_currentSession == null) {
       await _initializeSession();
       return;
     }
 
-    final userMessage = _messageController.text.trim();
+    String userMessage = _messageController.text.trim();
+    
+    // If there's a selected image, perform OCR first
+    if (_selectedImage != null) {
+      try {
+        setState(() => _isProcessingOCR = true);
+        final extractedText = await _extractTextFromImage(_selectedImage!);
+        if (extractedText.isNotEmpty) {
+          // Combine user message with extracted text
+          if (userMessage.isNotEmpty) {
+            userMessage = '$userMessage\n\nExtracted recipe from image:\n$extractedText';
+          } else {
+            userMessage = 'Extracted recipe from image:\n$extractedText';
+          }
+        }
+        setState(() {
+          _selectedImage = null;
+          _isProcessingOCR = false;
+        });
+      } catch (e) {
+        setState(() {
+          _selectedImage = null;
+          _isProcessingOCR = false;
+        });
+        if (mounted) {
+          String errorMessage = 'Error extracting text from image: ${e.toString()}';
+          
+          // Provide helpful guidance for common errors
+          if (e.toString().contains('MissingPluginException')) {
+            errorMessage = 'OCR plugin not found. Please:\n'
+                '1. Stop the app completely\n'
+                '2. Run: flutter clean && flutter pub get\n'
+                '3. Rebuild and restart the app\n'
+                '4. Ensure you are testing on Android or iOS device';
+          } else if (e.toString().contains('only supported on Android and iOS')) {
+            errorMessage = 'OCR is only available on Android and iOS devices. Please test on a mobile device.';
+          }
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              duration: const Duration(seconds: 5),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
+    
     _messageController.clear();
 
     // Add user message
@@ -519,6 +572,92 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
           curve: Curves.easeOut,
         );
       }
+    });
+  }
+
+  Future<String> _extractTextFromImage(File imageFile) async {
+    try {
+      // Check if platform is supported (Android or iOS)
+      if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) {
+        throw Exception('OCR is only supported on Android and iOS devices. Please use a mobile device.');
+      }
+
+      final inputImage = InputImage.fromFilePath(imageFile.path);
+      // Use Latin script recognizer for better compatibility
+      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      
+      final recognizedText = await textRecognizer.processImage(inputImage);
+      
+      String extractedText = recognizedText.text;
+      
+      // Clean up
+      await textRecognizer.close();
+      
+      if (extractedText.isEmpty) {
+        throw Exception('No text could be extracted from the image. Please ensure the image contains clear, readable text.');
+      }
+      
+      return extractedText;
+    } catch (e) {
+      // Re-throw with more context if it's already an Exception
+      if (e is Exception) {
+        rethrow;
+      }
+      throw Exception('Failed to extract text from image: $e');
+    }
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 2000,
+        maxHeight: 2000,
+        imageQuality: 85,
+      );
+      
+      if (image != null) {
+        setState(() {
+          _selectedImage = File(image.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking image: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _takePhoto() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 2000,
+        maxHeight: 2000,
+        imageQuality: 85,
+      );
+      
+      if (image != null) {
+        setState(() {
+          _selectedImage = File(image.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error taking photo: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  void _removeImage() {
+    setState(() {
+      _selectedImage = null;
     });
   }
 
@@ -906,10 +1045,66 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> {
                     },
                   ),
           ),
+          if (_selectedImage != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                border: Border(
+                  bottom: BorderSide(color: Colors.grey[300]!),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      image: DecorationImage(
+                        image: FileImage(_selectedImage!),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Image selected',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _isProcessingOCR ? 'Processing OCR...' : 'Ready to extract recipe',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    onPressed: _isProcessingOCR ? null : _removeImage,
+                    tooltip: 'Remove image',
+                  ),
+                ],
+              ),
+            ),
           _ChatInput(
             controller: _messageController,
             onSend: _sendMessage,
-            isLoading: _isLoading,
+            isLoading: _isLoading || _isProcessingOCR,
+            onPickImage: _pickImage,
+            onTakePhoto: _takePhoto,
+            hasSelectedImage: _selectedImage != null,
           ),
         ],
       ),
@@ -1455,11 +1650,17 @@ class _ChatInput extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
   final bool isLoading;
+  final VoidCallback? onPickImage;
+  final VoidCallback? onTakePhoto;
+  final bool hasSelectedImage;
 
   const _ChatInput({
     required this.controller,
     required this.onSend,
     required this.isLoading,
+    this.onPickImage,
+    this.onTakePhoto,
+    this.hasSelectedImage = false,
   });
 
   @override
@@ -1478,12 +1679,55 @@ class _ChatInput extends StatelessWidget {
       ),
       child: Row(
         children: [
+          if (onPickImage != null || onTakePhoto != null)
+            PopupMenuButton<String>(
+              icon: Icon(
+                hasSelectedImage ? Icons.image : Icons.add_photo_alternate,
+                color: hasSelectedImage ? Colors.orange : Colors.grey[700],
+              ),
+              tooltip: 'Attach photo',
+              onSelected: (value) {
+                if (value == 'gallery' && onPickImage != null) {
+                  onPickImage!();
+                } else if (value == 'camera' && onTakePhoto != null) {
+                  onTakePhoto!();
+                }
+              },
+              itemBuilder: (context) => [
+                if (onPickImage != null)
+                  const PopupMenuItem(
+                    value: 'gallery',
+                    child: Row(
+                      children: [
+                        Icon(Icons.photo_library, size: 20),
+                        SizedBox(width: 8),
+                        Text('Choose from Gallery'),
+                      ],
+                    ),
+                  ),
+                if (onTakePhoto != null)
+                  const PopupMenuItem(
+                    value: 'camera',
+                    child: Row(
+                      children: [
+                        Icon(Icons.camera_alt, size: 20),
+                        SizedBox(width: 8),
+                        Text('Take Photo'),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          if (onPickImage != null || onTakePhoto != null)
+            const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: controller,
-              decoration: const InputDecoration(
-                hintText: 'Describe the recipe you want...',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                hintText: hasSelectedImage
+                    ? 'Add description (optional)...'
+                    : 'Describe the recipe you want...',
+                border: const OutlineInputBorder(),
               ),
               maxLines: null,
               enabled: !isLoading,

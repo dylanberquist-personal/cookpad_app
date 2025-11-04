@@ -11,6 +11,13 @@ rootProject.layout.buildDirectory.value(newBuildDir)
 subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
+    
+    // Force all subprojects to use SDK 35 to avoid lStar attribute errors
+    afterEvaluate {
+        project.extensions.findByType<com.android.build.gradle.BaseExtension>()?.apply {
+            compileSdkVersion(35)
+        }
+    }
 }
 subprojects {
     project.evaluationDependsOn(":app")

@@ -5,6 +5,7 @@ import 'auth/login_screen.dart';
 import 'my_recipes_screen.dart';
 import 'pantry_screen.dart';
 import 'my_profile_detail_screen.dart';
+import 'favorites_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -47,7 +48,10 @@ class ProfileScreen extends StatelessWidget {
                   title: const Text('Favorites'),
                   leading: const Icon(Icons.favorite),
                   onTap: () {
-                    // TODO: Navigate to favorites
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const FavoritesScreen()),
+                    );
                   },
                 ),
                 ListTile(

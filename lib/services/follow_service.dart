@@ -1,8 +1,11 @@
 import '../config/supabase_config.dart';
 import '../models/user_model.dart';
+import 'notification_service.dart';
+import '../models/notification_model.dart';
 
 class FollowService {
   final _supabase = SupabaseConfig.client;
+  final _notificationService = NotificationService();
 
   /// Check if current user is following a specific user
   Future<bool> isFollowing(String userId) async {
@@ -40,6 +43,13 @@ class FollowService {
         'follower_id': currentUserId,
         'following_id': userId,
       });
+
+      // Create notification for the user being followed
+      await _notificationService.createNotification(
+        recipientUserId: userId,
+        type: NotificationType.newFollower,
+        actorId: currentUserId,
+      );
     } catch (e) {
       print('Error following user: $e');
       rethrow;

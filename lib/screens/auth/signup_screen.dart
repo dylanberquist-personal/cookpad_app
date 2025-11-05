@@ -32,24 +32,63 @@ class _SignupScreenState extends State<SignupScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await _authService.signUpWithEmail(
+      final response = await _authService.signUpWithEmail(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         username: _usernameController.text.trim(),
       );
 
       if (mounted) {
-        // Navigate to onboarding
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const OnboardingScreen()),
-        );
+        // Check if email confirmation is required
+        if (response.session == null) {
+          // Email confirmation required - show message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please check your email to confirm your account before signing in.'),
+              duration: Duration(seconds: 5),
+            ),
+          );
+          // Navigate back to login
+          Navigator.pop(context);
+        } else {
+          // User is already confirmed (if email confirmation is disabled)
+          // Navigate to onboarding
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const OnboardingScreen()),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
-        );
+        final errorMessage = e.toString();
+        String displayMessage = 'Sign up failed. Please try again.';
+        
+        // Check if it's an RLS error - this is expected and handled by trigger
+        if (errorMessage.contains('row-level security') || 
+            errorMessage.contains('42501')) {
+          // This is expected - the trigger will create the profile
+          // Show success message instead
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account created! Please check your email to confirm your account.'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 5),
+            ),
+          );
+          Navigator.pop(context);
+        } else if (errorMessage.contains('User already registered')) {
+          displayMessage = 'An account with this email already exists.';
+        } else if (errorMessage.contains('network') || errorMessage.contains('connection')) {
+          displayMessage = 'Network error. Please check your connection.';
+        }
+        
+        if (!errorMessage.contains('row-level security') && 
+            !errorMessage.contains('42501')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(displayMessage)),
+          );
+        }
       }
     } finally {
       if (mounted) {

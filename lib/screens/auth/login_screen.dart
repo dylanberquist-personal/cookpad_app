@@ -34,11 +34,36 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      // Navigation handled by AuthWrapper
+      
+      // Wait for auth state to update
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      // Verify user is actually signed in
+      final currentUser = _authService.currentUser;
+      if (currentUser == null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Login failed. Please try again.')),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      // Navigation handled by AuthWrapper, but ensure it updates
+      // The AuthWrapper will detect the auth state change via stream
     } catch (e) {
       if (mounted) {
+        final errorMessage = e.toString();
+        // Show user-friendly error message
+        String displayMessage = 'Login failed. Please check your credentials.';
+        if (errorMessage.contains('Invalid login credentials') || 
+            errorMessage.contains('Email not confirmed')) {
+          displayMessage = 'Invalid email or password.';
+        } else if (errorMessage.contains('network') || errorMessage.contains('connection')) {
+          displayMessage = 'Network error. Please check your connection.';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
+          SnackBar(content: Text(displayMessage)),
         );
       }
     } finally {
@@ -61,19 +86,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(
-                    Icons.restaurant_menu,
-                    size: 80,
-                    color: Colors.orange,
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Cookpad',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
+                  Image.asset(
+                    'Assets/Logo_with_text.png',
+                    height: 120,
+                    fit: BoxFit.contain,
                   ),
                   const SizedBox(height: 48),
                   TextFormField(

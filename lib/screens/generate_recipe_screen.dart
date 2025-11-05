@@ -980,8 +980,11 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
         imageUrls: imageUrls.isNotEmpty ? imageUrls : null,
       );
 
-      // Save recipe to database
-      final savedRecipe = await _recipeService.createRecipe(recipeWithImages);
+      // Save recipe to database (pass original recipe ID if this is a remix)
+      final savedRecipe = await _recipeService.createRecipe(
+        recipeWithImages,
+        originalRecipeId: widget.remixRecipe?.id,
+      );
 
       // Update chat session with recipe ID
       if (_currentSession != null) {

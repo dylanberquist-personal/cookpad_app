@@ -3,10 +3,13 @@ import '../config/supabase_config.dart';
 import '../models/recipe_model.dart';
 import '../models/user_model.dart';
 import 'collection_service.dart';
+import 'notification_service.dart';
+import '../models/notification_model.dart';
 
 class RecipeServiceSupabase {
   final _supabase = SupabaseConfig.client;
   final _collectionService = CollectionService();
+  final _notificationService = NotificationService();
 
   Future<List<RecipeModel>> getRecipes({
     String? userId,
@@ -261,7 +264,7 @@ class RecipeServiceSupabase {
         .eq('image_url', imageUrl);
   }
 
-  Future<RecipeModel> createRecipe(RecipeModel recipe) async {
+  Future<RecipeModel> createRecipe(RecipeModel recipe, {String? originalRecipeId}) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
 
@@ -309,6 +312,30 @@ class RecipeServiceSupabase {
     }
 
     final createdRecipe = await getRecipeById(recipeId);
+
+    // Create notification for original recipe owner if this is a remix
+    if (originalRecipeId != null && createdRecipe != null) {
+      try {
+        final originalRecipe = await _supabase
+            .from('recipes')
+            .select('user_id')
+            .eq('id', originalRecipeId)
+            .single();
+
+        final originalRecipeOwnerId = originalRecipe['user_id'] as String;
+        if (originalRecipeOwnerId != userId) {
+          await _notificationService.createNotification(
+            recipientUserId: originalRecipeOwnerId,
+            type: NotificationType.remix,
+            actorId: userId,
+            recipeId: recipeId, // The new remixed recipe
+          );
+        }
+      } catch (e) {
+        print('Error creating notification for remix: $e');
+      }
+    }
+
     return createdRecipe ?? recipe;
   }
 
@@ -383,6 +410,21 @@ class RecipeServiceSupabase {
       'is_primary': nextOrder == 0, // First image is primary
       'order': nextOrder,
     });
+
+    // Create notification for recipe owner (only if not the owner adding the image)
+    try {
+      final recipeOwnerId = recipe.userId;
+      if (recipeOwnerId != userId) {
+        await _notificationService.createNotification(
+          recipientUserId: recipeOwnerId,
+          type: NotificationType.recipeImageAdded,
+          actorId: userId,
+          recipeId: recipeId,
+        );
+      }
+    } catch (e) {
+      print('Error creating notification for image: $e');
+    }
 
     return imageUrl;
   }
@@ -480,6 +522,27 @@ class RecipeServiceSupabase {
         // Silently fail - don't break favorite toggle if collection sync fails
         print('Warning: Failed to sync with Favorites collection: $e');
       }
+
+      // Create notification for recipe owner
+      try {
+        final recipe = await _supabase
+            .from('recipes')
+            .select('user_id')
+            .eq('id', recipeId)
+            .single();
+
+        final recipeOwnerId = recipe['user_id'] as String;
+        if (recipeOwnerId != userId) {
+          await _notificationService.createNotification(
+            recipientUserId: recipeOwnerId,
+            type: NotificationType.recipeFavorited,
+            actorId: userId,
+            recipeId: recipeId,
+          );
+        }
+      } catch (e) {
+        print('Error creating notification for favorite: $e');
+      }
     }
   }
 
@@ -489,12 +552,45 @@ class RecipeServiceSupabase {
 
     if (rating < 1 || rating > 5) throw Exception('Rating must be between 1 and 5');
 
+    // Check if this is a new rating or update
+    final existingRating = await _supabase
+        .from('ratings')
+        .select()
+        .eq('user_id', userId)
+        .eq('recipe_id', recipeId)
+        .maybeSingle();
+
+    final isNewRating = existingRating == null;
+
     await _supabase.from('ratings').upsert({
       'user_id': userId,
       'recipe_id': recipeId,
       'rating': rating,
       'updated_at': DateTime.now().toIso8601String(),
     }, onConflict: 'user_id,recipe_id');
+
+    // Create notification for recipe owner (only for new ratings)
+    if (isNewRating) {
+      try {
+        final recipe = await _supabase
+            .from('recipes')
+            .select('user_id')
+            .eq('id', recipeId)
+            .single();
+
+        final recipeOwnerId = recipe['user_id'] as String;
+        if (recipeOwnerId != userId) {
+          await _notificationService.createNotification(
+            recipientUserId: recipeOwnerId,
+            type: NotificationType.recipeRated,
+            actorId: userId,
+            recipeId: recipeId,
+          );
+        }
+      } catch (e) {
+        print('Error creating notification for rating: $e');
+      }
+    }
   }
 
   Future<List<RecipeModel>> getFavoriteRecipes({String? userId}) async {

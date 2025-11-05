@@ -20,16 +20,41 @@ class AuthService {
       data: {'username': username},
     );
 
-    if (response.user != null) {
-      // Create user profile in users table
-      await _supabase.from('users').insert({
-        'id': response.user!.id,
-        'email': email,
-        'username': username,
-        'skill_level': 'beginner',
-        'dietary_restrictions': [],
-        'chef_score': 0.0,
-      });
+    // Note: We don't try to insert into users table here because:
+    // 1. During signup, the user is not yet confirmed, so RLS blocks the insert
+    // 2. The database trigger (handle_new_user) automatically creates the profile
+    //    when the auth user is created, using SECURITY DEFINER to bypass RLS
+    // 3. If email confirmation is required, the profile will be created by the trigger
+    //    and will be available once the user confirms their email
+    
+    // Optionally, try to insert the profile if the user is already confirmed
+    // (this might happen if email confirmation is disabled)
+    if (response.user != null && response.session != null) {
+      try {
+        // Only try if we have an active session (user is confirmed)
+        // Check if user profile already exists first
+        final existing = await _supabase
+            .from('users')
+            .select('id')
+            .eq('id', response.user!.id)
+            .maybeSingle();
+        
+        if (existing == null) {
+          // Profile doesn't exist, try to create it
+          await _supabase.from('users').insert({
+            'id': response.user!.id,
+            'email': email,
+            'username': username,
+            'skill_level': 'beginner',
+            'dietary_restrictions': [],
+            'chef_score': 0.0,
+          });
+        }
+      } catch (e) {
+        // If insert fails, that's okay - the trigger will handle it
+        // Don't throw error, just log it
+        print('Note: Client-side user profile insert failed (trigger will handle it): $e');
+      }
     }
 
     return response;
@@ -39,10 +64,15 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    return await _supabase.auth.signInWithPassword(
+    final response = await _supabase.auth.signInWithPassword(
       email: email,
       password: password,
     );
+    
+    // Wait a moment to ensure session is established
+    await Future.delayed(const Duration(milliseconds: 100));
+    
+    return response;
   }
 
   Future<void> signOut() async {

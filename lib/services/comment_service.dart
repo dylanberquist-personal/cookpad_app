@@ -1,9 +1,12 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/comment_model.dart';
+import 'notification_service.dart';
+import '../models/notification_model.dart';
 
 class CommentService {
   final SupabaseClient _supabase = SupabaseConfig.client;
+  final _notificationService = NotificationService();
 
   Future<List<CommentModel>> listComments(String recipeId, {String? currentUserId}) async {
     final response = await _supabase
@@ -99,7 +102,32 @@ class CommentService {
         .select('*, user:users!user_id(id, username, profile_picture_url)')
         .single();
 
-    return CommentModel.fromJson(response);
+    final comment = CommentModel.fromJson(response);
+
+    // Create notification for recipe owner (only if not the recipe owner commenting)
+    try {
+      final recipe = await _supabase
+          .from('recipes')
+          .select('user_id')
+          .eq('id', recipeId)
+          .single();
+
+      final recipeOwnerId = recipe['user_id'] as String;
+      if (recipeOwnerId != userId) {
+        await _notificationService.createNotification(
+          recipientUserId: recipeOwnerId,
+          type: NotificationType.comment,
+          actorId: userId,
+          recipeId: recipeId,
+          commentId: comment.id,
+        );
+      }
+    } catch (e) {
+      // Don't fail comment creation if notification fails
+      print('Error creating notification for comment: $e');
+    }
+
+    return comment;
   }
 
   Future<void> _ensureUserExists(String userId) async {

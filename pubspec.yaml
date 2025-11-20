@@ -50,6 +50,8 @@ dependencies:
   # HTTP & Networking
   http: ^1.1.0
   dio: ^5.4.2
+  html: ^0.15.4
+  youtube_explode_dart: ^2.0.2
   
   # Local Storage
   shared_preferences: ^2.2.2

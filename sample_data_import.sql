@@ -39,7 +39,7 @@ VALUES (
     0.0
 );
 
--- User 2: Marcus Johnson (marcus.j@example.com)
+-- User 2: Marcus Johnson (marcus.j@example.com)q
 INSERT INTO users (id, email, username, display_name, bio, skill_level, dietary_restrictions, cuisine_preferences, chef_score)
 VALUES (
     '22222222-2222-2222-2222-222222222222'::uuid,  -- REPLACE with actual auth.users.id

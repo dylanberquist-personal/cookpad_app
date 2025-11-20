@@ -75,7 +75,7 @@ This guide will help you set up your Supabase database for the Cookpad Recipe So
    - Name: `recipe-photos-ocr`
    - Public bucket: ❌ Disabled (Private)
    - File size limit: 10 MB
-   - Allowed MIME types: `image/jpeg, image/png, image/webp`
+   - Allowed MIME types: ``
    - Note: Set up auto-delete after 24 hours (via Edge Function or cron job)
 
 ### 5. Set Up Authentication Providers

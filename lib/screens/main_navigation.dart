@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart' hide Step;
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import 'feed_screen.dart';
 import 'search_screen_new.dart';
 import 'generate_recipe_screen.dart';
@@ -23,6 +25,10 @@ class _MainNavigationState extends State<MainNavigation> {
   RecipeModel? _remixRecipe;
   final _notificationService = NotificationService();
   int _unreadCount = 0;
+  bool _isFabMenuOpen = false;
+  File? _initialImage;
+  String? _initialMessage;
+  Key _generateRecipeKey = UniqueKey();
 
   @override
   void initState() {
@@ -72,10 +78,155 @@ class _MainNavigationState extends State<MainNavigation> {
     return '10+';
   }
 
+  void _openRecipeGenerator() {
+    setState(() {
+      _isFabMenuOpen = false;
+      _initialImage = null;
+      _initialMessage = null;
+      _generateRecipeKey = UniqueKey(); // Force recreation
+      _currentIndex = 2;
+    });
+  }
+
+  Future<void> _openImagePicker() async {
+    setState(() => _isFabMenuOpen = false);
+    
+    final ImagePicker picker = ImagePicker();
+    final source = await showDialog<ImageSource>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select Image Source'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Take photo'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (source != null) {
+      final XFile? image = await picker.pickImage(
+        source: source,
+        maxWidth: 2000,
+        maxHeight: 2000,
+        imageQuality: 85,
+      );
+
+      if (image != null) {
+        setState(() {
+          _initialImage = File(image.path);
+          _initialMessage = null;
+          _generateRecipeKey = UniqueKey(); // Force recreation
+          _currentIndex = 2;
+        });
+      }
+    }
+  }
+
+  Future<void> _openLinkInput() async {
+    setState(() => _isFabMenuOpen = false);
+    
+    final TextEditingController linkController = TextEditingController();
+    final link = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Enter Recipe Link'),
+        content: TextField(
+          controller: linkController,
+          decoration: const InputDecoration(
+            hintText: 'Paste URL here...',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: TextInputType.url,
+          autofocus: true,
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              if (linkController.text.trim().isNotEmpty) {
+                Navigator.pop(context, linkController.text);
+              }
+            },
+            child: const Text('Extract Recipe'),
+          ),
+        ],
+      ),
+    );
+
+    if (link != null && link.trim().isNotEmpty) {
+      setState(() {
+        _initialImage = null;
+        _initialMessage = link.trim();
+        _generateRecipeKey = UniqueKey(); // Force recreation
+        _currentIndex = 2;
+      });
+    }
+  }
+
+  void _toggleFabMenu() {
+    setState(() => _isFabMenuOpen = !_isFabMenuOpen);
+  }
+
+  Widget _buildFabMenuItem({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(24),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   List<Widget> get _screens => [
     const FeedScreen(),
     const SearchScreenNew(),
-    GenerateRecipeScreen(remixRecipe: _remixRecipe),
+    GenerateRecipeScreen(
+      key: _generateRecipeKey,
+      remixRecipe: _remixRecipe,
+      initialImage: _initialImage,
+      initialMessage: _initialMessage,
+    ),
     NotificationsScreen(onUnreadCountChanged: _loadUnreadCount),
     const ProfileScreen(),
   ];
@@ -143,12 +294,54 @@ class _MainNavigationState extends State<MainNavigation> {
       ),
       floatingActionButton: _currentIndex == 1 || _currentIndex == 2 || _currentIndex == 3 || _currentIndex == 4
           ? null
-          : FloatingActionButton(
-              onPressed: () {
-                setState(() => _currentIndex = 2);
-              },
-              child: const Icon(Icons.add),
-              tooltip: 'Generate Recipe',
+          : Stack(
+              children: [
+                // Backdrop to close menu
+                if (_isFabMenuOpen)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _isFabMenuOpen = false),
+                      child: Container(color: Colors.transparent),
+                    ),
+                  ),
+                // Menu items
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (_isFabMenuOpen) ...[
+                      _buildFabMenuItem(
+                        icon: Icons.auto_awesome,
+                        label: 'Recipe Generator',
+                        onTap: _openRecipeGenerator,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildFabMenuItem(
+                        icon: Icons.image,
+                        label: 'Image',
+                        onTap: _openImagePicker,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildFabMenuItem(
+                        icon: Icons.link,
+                        label: 'Link',
+                        onTap: _openLinkInput,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    // Main FAB
+                    FloatingActionButton(
+                      onPressed: _toggleFabMenu,
+                      child: AnimatedRotation(
+                        turns: _isFabMenuOpen ? 0.125 : 0,
+                        duration: const Duration(milliseconds: 200),
+                        child: Icon(_isFabMenuOpen ? Icons.close : Icons.add),
+                      ),
+                      tooltip: 'Generate Recipe',
+                    ),
+                  ],
+                ),
+              ],
             ),
     );
   }

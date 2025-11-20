@@ -9,6 +9,7 @@ import '../../services/recipe_service_supabase.dart';
 import '../../services/auth_service.dart';
 import '../../services/pantry_service.dart';
 import '../../services/preferences_service.dart';
+import '../../services/recipe_url_parser_service.dart';
 import '../../config/supabase_config.dart';
 import '../../models/ai_chat_model.dart';
 import '../../models/recipe_model.dart';
@@ -18,8 +19,15 @@ import 'recipe_detail_screen_new.dart';
 
 class GenerateRecipeScreen extends StatefulWidget {
   final RecipeModel? remixRecipe;
+  final File? initialImage;
+  final String? initialMessage;
 
-  const GenerateRecipeScreen({super.key, this.remixRecipe});
+  const GenerateRecipeScreen({
+    super.key, 
+    this.remixRecipe,
+    this.initialImage,
+    this.initialMessage,
+  });
 
   @override
   State<GenerateRecipeScreen> createState() => _GenerateRecipeScreenState();
@@ -31,6 +39,7 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
   final _authService = AuthService();
   final _pantryService = PantryService();
   final _preferencesService = PreferencesService();
+  final _urlParserService = RecipeUrlParserService();
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final GlobalKey _dietaryButtonKey = GlobalKey(); // Key for positioning tooltip
@@ -57,8 +66,56 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    // Set initial image if provided
+    if (widget.initialImage != null) {
+      _selectedImage = widget.initialImage;
+    }
+    
     _initializeData();
-    _initializeSession();
+    
+    // Initialize session and send initial message if provided
+    if (widget.initialMessage != null && widget.initialMessage!.isNotEmpty) {
+      _initializeSessionAndSendMessage(widget.initialMessage!);
+    } else {
+      _initializeSession();
+    }
+  }
+  
+  Future<void> _initializeSessionAndSendMessage(String message) async {
+    final userId = SupabaseConfig.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      final session = await _aiService.createChatSession(userId);
+      setState(() {
+        _currentSession = session;
+        _messages = session.messages;
+        _recipeDataCache = {};
+      });
+      
+      // If remixRecipe is provided and hasn't been sent yet, send it as the first message
+      if (widget.remixRecipe != null && !_remixRecipeSent && _messages.isEmpty) {
+        await _sendRemixRecipe();
+        _remixRecipeSent = true;
+      }
+      
+      // Parse all messages for recipes
+      for (int i = 0; i < _messages.length; i++) {
+        _parseRecipeFromMessage(i);
+      }
+      
+      // Now send the initial message
+      if (mounted) {
+        _sendMessage(message);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   Future<void> _initializeData() async {
@@ -373,6 +430,12 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
     return '```json\n${jsonEncode(recipeJson)}\n```';
   }
 
+  String _formatExtractedRecipe(Map<String, dynamic> recipeData) {
+    // Format extracted recipe data as a JSON structure for display
+    // Return as JSON string wrapped in markdown code block
+    return '```json\n${jsonEncode(recipeData)}\n```';
+  }
+
   Future<void> _startNewChat() async {
     final userId = SupabaseConfig.client.auth.currentUser?.id;
     if (userId == null) return;
@@ -574,14 +637,110 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
     }
   }
 
-  Future<void> _sendMessage() async {
-    if ((_messageController.text.trim().isEmpty && _selectedImage == null) || _isLoading) return;
+  bool _isUrlLink(String text) {
+    // Regex pattern to detect URLs
+    final urlPattern = RegExp(
+      r'(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)',
+      caseSensitive: false,
+    );
+    return urlPattern.hasMatch(text.trim());
+  }
+
+  Future<void> _sendMessage([String? message]) async {
+    final messageToSend = message ?? _messageController.text.trim();
+    if ((messageToSend.isEmpty && _selectedImage == null) || _isLoading) return;
     if (_currentSession == null) {
       await _initializeSession();
       return;
     }
 
-    String userMessage = _messageController.text.trim();
+    String userMessage = messageToSend;
+    
+    // Check if the message is just a URL link
+    bool isLink = _isUrlLink(userMessage) && userMessage.split(RegExp(r'\s+')).length <= 2;
+    
+    if (isLink && _selectedImage == null) {
+      // Try to extract recipe directly from URL using the parser service
+      _messageController.clear();
+      
+      setState(() => _isLoading = true);
+      
+      // Show ONLY the URL in the chat (what the user typed)
+      final userMsg = ChatMessageModel(
+        role: 'user',
+        content: userMessage,
+        timestamp: DateTime.now(),
+      );
+      
+      setState(() {
+        _messages.add(userMsg);
+      });
+      _scrollToBottom();
+      
+      try {
+        // Extract recipe from URL
+        final recipeData = await _urlParserService.extractRecipeFromUrl(userMessage);
+        
+        // Format the extracted recipe as a response
+        final recipeResponse = _formatExtractedRecipe(recipeData);
+        
+        final assistantMsg = ChatMessageModel(
+          role: 'assistant',
+          content: recipeResponse,
+          timestamp: DateTime.now(),
+        );
+
+        setState(() {
+          _messages.add(assistantMsg);
+          _isLoading = false;
+          // Cache the recipe data
+          _recipeDataCache[_messages.length - 1] = recipeData;
+        });
+
+        // Update session
+        if (_currentSession != null) {
+          await _aiService.updateChatSession(
+            sessionId: _currentSession!.id,
+            messages: [..._messages],
+          );
+        }
+
+        _scrollToBottom();
+        return;
+      } catch (e) {
+        // If URL parsing fails, show an error message
+        print('URL parsing failed: $e');
+        
+        final errorMsg = ChatMessageModel(
+          role: 'assistant',
+          content: 'Sorry, I couldn\'t get the recipe from that link.\n\n'
+                   'Try:\n'
+                   '• Copying the recipe text from the page and pasting it here\n'
+                   '• Checking if the video has the recipe in the description\n'
+                   '• Using a direct recipe website link instead of social media',
+          timestamp: DateTime.now(),
+        );
+
+        setState(() {
+          _messages.add(errorMsg);
+          _isLoading = false;
+        });
+
+        // Update session
+        if (_currentSession != null) {
+          await _aiService.updateChatSession(
+            sessionId: _currentSession!.id,
+            messages: [..._messages],
+          );
+        }
+
+        _scrollToBottom();
+        return;
+      }
+    }
+    
+    // Keep the original message for display
+    final displayMessage = userMessage;
     
     // If there's a selected image, perform OCR first
     if (_selectedImage != null) {
@@ -589,7 +748,7 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
         setState(() => _isProcessingOCR = true);
         final extractedText = await _extractTextFromImage(_selectedImage!);
         if (extractedText.isNotEmpty) {
-          // Combine user message with extracted text
+          // Combine user message with extracted text ONLY for AI processing
           if (userMessage.isNotEmpty) {
             userMessage = '$userMessage\n\nExtracted recipe from image:\n$extractedText';
           } else {
@@ -633,10 +792,10 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
     
     _messageController.clear();
 
-    // Add user message
+    // Add user message - ALWAYS use the original message the user typed
     final userMsg = ChatMessageModel(
       role: 'user',
-      content: userMessage,
+      content: displayMessage,
       timestamp: DateTime.now(),
     );
 
@@ -661,6 +820,7 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
         dietaryRestrictions = _currentUser!.dietaryRestrictions;
       }
 
+      // Send the enhanced message (with OCR text) to AI, but display shows original
       final assistantResponse = await _aiService.generateRecipeChat(
         userMessage: userMessage,
         chatHistory: _messages,
@@ -1244,18 +1404,6 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
             onPressed: _showChatHistory,
             tooltip: 'Chat History',
           ),
-          // Debug: Long press to reset and show dietary hint
-          if (_currentUser?.dietaryRestrictions.isNotEmpty ?? false)
-            IconButton(
-              icon: const Icon(Icons.help_outline),
-              onPressed: () async {
-                // Reset hint and show it
-                await _preferencesService.resetDietaryHint();
-                _hasShownHintThisSession = false; // Allow showing again
-                await _checkAndShowDietaryHint();
-              },
-              tooltip: 'Show Dietary Hint (Debug)',
-            ),
         ],
       ),
       body: Column(
@@ -1308,9 +1456,15 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.grey[100],
+                color: Theme.of(context).brightness == Brightness.dark 
+                    ? Colors.grey[850] 
+                    : Colors.grey[100],
                 border: Border(
-                  bottom: BorderSide(color: Colors.grey[300]!),
+                  bottom: BorderSide(
+                    color: Theme.of(context).brightness == Brightness.dark 
+                        ? Colors.grey[700]! 
+                        : Colors.grey[300]!
+                  ),
                 ),
               ),
               child: Row(
@@ -1331,18 +1485,23 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Image selected',
                           style: TextStyle(
                             fontWeight: FontWeight.w500,
                             fontSize: 14,
+                            color: Theme.of(context).brightness == Brightness.dark 
+                                ? Colors.white 
+                                : Colors.black,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           _isProcessingOCR ? 'Processing OCR...' : 'Ready to extract recipe',
                           style: TextStyle(
-                            color: Colors.grey[600],
+                            color: Theme.of(context).brightness == Brightness.dark 
+                                ? Colors.grey[400] 
+                                : Colors.grey[600],
                             fontSize: 12,
                           ),
                         ),
@@ -1350,7 +1509,13 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 20),
+                    icon: Icon(
+                      Icons.close, 
+                      size: 20,
+                      color: Theme.of(context).brightness == Brightness.dark 
+                          ? Colors.grey[300] 
+                          : Colors.black,
+                    ),
                     onPressed: _isProcessingOCR ? null : _removeImage,
                     tooltip: 'Remove image',
                   ),

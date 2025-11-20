@@ -13,6 +13,23 @@ Future<void> main() async {
   // Load environment variables
   await dotenv.load(fileName: ".env");
   
+  // 🔍 DEBUG: Print what was loaded from .env
+  print('🔍 DEBUG: .env file loaded');
+  print('   All env vars: ${dotenv.env.keys.toList()}');
+  print('   SUPABASE_URL exists: ${dotenv.env.containsKey('SUPABASE_URL')}');
+  print('   OPENAI_API_KEY exists: ${dotenv.env.containsKey('OPENAI_API_KEY')}');
+  print('   RAPIDAPI_KEY exists: ${dotenv.env.containsKey('RAPIDAPI_KEY')}');
+  
+  if (dotenv.env.containsKey('RAPIDAPI_KEY')) {
+    final key = dotenv.env['RAPIDAPI_KEY']!;
+    print('   RAPIDAPI_KEY length: ${key.length} characters');
+    if (key.length >= 10) {
+      print('   RAPIDAPI_KEY preview: ${key.substring(0, 10)}...${key.substring(key.length - 4)}');
+    }
+  } else {
+    print('   ⚠️ RAPIDAPI_KEY NOT FOUND IN .env FILE!');
+  }
+  
   // Initialize Supabase
   await Supabase.initialize(
     url: dotenv.env['SUPABASE_URL'] ?? 'https://sfyidxcygzeeltkuwwyo.supabase.co',

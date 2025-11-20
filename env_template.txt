@@ -5,4 +5,9 @@ SUPABASE_ANON_KEY=your_supabase_anon_key
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key
 
+# RapidAPI Configuration (Optional - for enhanced social media extraction)
+# Get your key from https://rapidapi.com/
+# Recommended APIs: TikTok Scraper, Instagram Scraper, YouTube Data
+RAPIDAPI_KEY=your_rapidapi_key
+
 

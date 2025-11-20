@@ -275,75 +275,222 @@ class _FeedScreenState extends State<FeedScreen> {
               children: _topChefs.asMap().entries.map((entry) {
                 final index = entry.key;
                 final chef = entry.value;
+                final rank = index + 1;
+                // Add extra spacing for top 3
+                final bottomPadding = rank <= 3 ? 16.0 : 12.0;
                 return Padding(
-                  padding: EdgeInsets.only(bottom: index < _topChefs.length - 1 ? 12 : 0),
-                  child: _buildChefCardWithRank(chef, index + 1),
+                  padding: EdgeInsets.only(bottom: index < _topChefs.length - 1 ? bottomPadding : 0),
+                  child: _buildChefCardWithRank(chef, rank),
                 );
               }).toList(),
             ),
           ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 32),
       ],
     );
   }
 
   Widget _buildChefCardWithRank(UserModel chef, int rank) {
     Widget rankBadge;
+    List<Color> borderGradient;
+    double borderWidth;
 
     if (rank == 1) {
+      // Intense fire border for 1st place
+      borderGradient = [
+        Colors.red.shade600,
+        Colors.orange.shade600,
+        Colors.yellow.shade500,
+        Colors.orange.shade600,
+        Colors.red.shade600,
+      ];
+      borderWidth = 4.0;
       rankBadge = Container(
-        padding: const EdgeInsets.all(6),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.amber,
+          gradient: LinearGradient(
+            colors: [Colors.red.shade400, Colors.orange.shade600, Colors.yellow.shade500],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.looks_one, color: Colors.white, size: 20),
+        child: const Icon(Icons.emoji_events, color: Colors.white, size: 24),
       );
     } else if (rank == 2) {
+      // Medium fire border for 2nd place
+      borderGradient = [
+        Colors.orange.shade600,
+        Colors.orange.shade400,
+        Colors.yellow.shade400,
+        Colors.orange.shade400,
+        Colors.orange.shade600,
+      ];
+      borderWidth = 3.5;
       rankBadge = Container(
-        padding: const EdgeInsets.all(6),
+        width: 48,
+        height: 48,
         decoration: BoxDecoration(
-          color: Colors.grey[400],
+          gradient: LinearGradient(
+            colors: [
+              Colors.grey.shade300,
+              Colors.grey.shade100,
+              Colors.grey.shade400,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.looks_two, color: Colors.white, size: 20),
+        child: Center(
+          child: Text(
+            '#2',
+            style: TextStyle(
+              color: Colors.grey.shade800,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              shadows: const [
+                Shadow(
+                  color: Colors.white70,
+                  blurRadius: 2,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     } else if (rank == 3) {
+      // Lighter fire border for 3rd place
+      borderGradient = [
+        Colors.orange.shade400,
+        Colors.orange.shade300,
+        Colors.yellow.shade300,
+        Colors.orange.shade300,
+        Colors.orange.shade400,
+      ];
+      borderWidth = 3.0;
       rankBadge = Container(
-        padding: const EdgeInsets.all(6),
+        width: 48,
+        height: 48,
         decoration: BoxDecoration(
-          color: Colors.brown[300],
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFFCD7F32), // Bronze color
+              Color(0xFFE5A167),
+              Color(0xFFB87333),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.looks_3, color: Colors.white, size: 20),
+        child: Center(
+          child: Text(
+            '#3',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              shadows: const [
+                Shadow(
+                  color: Colors.black38,
+                  blurRadius: 2,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     } else {
+      // Simple gray border for other ranks
+      borderGradient = [Colors.grey.shade300];
+      borderWidth = 2.0;
       rankBadge = Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.grey[300],
-          borderRadius: BorderRadius.circular(12),
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade400, width: 2),
         ),
         child: Text(
           '#$rank',
           style: TextStyle(
             color: Colors.grey[700],
             fontWeight: FontWeight.bold,
-            fontSize: 12,
+            fontSize: 14,
           ),
         ),
       );
     }
 
-    return Stack(
-      children: [
-        CreatorProfileCard(creator: chef),
-        Positioned(
-          top: 8,
-          right: 8,
-          child: rankBadge,
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        gradient: rank <= 3
+            ? LinearGradient(
+                colors: borderGradient,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                stops: rank == 1 
+                    ? [0.0, 0.25, 0.5, 0.75, 1.0]
+                    : null,
+              )
+            : null,
+        border: rank > 3 ? Border.all(color: Colors.grey.shade300, width: borderWidth) : null,
+      ),
+      child: Container(
+        margin: EdgeInsets.all(borderWidth),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(12 - borderWidth),
         ),
-      ],
+         child: Stack(
+           children: [
+             CreatorProfileCard(creator: chef, showBorder: false),
+             Positioned(
+               top: 12,
+               right: 12,
+               child: rankBadge,
+             ),
+            if (rank == 1)
+              Positioned(
+                top: 0,
+                left: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.red.shade500, Colors.orange.shade600, Colors.yellow.shade500],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(8),
+                      bottomRight: Radius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.local_fire_department, color: Colors.white, size: 14),
+                      const SizedBox(width: 4),
+                      const Text(
+                        'Top Chef',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -9,12 +9,14 @@ class CreatorProfileCard extends StatefulWidget {
   final UserModel? creator;
   final String? userId;
   final String? username;
+  final bool showBorder;
 
   const CreatorProfileCard({
     super.key,
     this.creator,
     this.userId,
     this.username,
+    this.showBorder = true,
   }) : assert(
           creator != null || userId != null,
           'Either creator or userId must be provided',
@@ -105,10 +107,12 @@ class _CreatorProfileCardState extends State<CreatorProfileCard> {
         decoration: BoxDecoration(
           color: cardColor,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.grey[200]!,
-            width: 1,
-          ),
+          border: widget.showBorder
+              ? Border.all(
+                  color: Colors.grey[200]!,
+                  width: 1,
+                )
+              : null,
         ),
         child: Row(
           children: [
@@ -136,13 +140,6 @@ class _CreatorProfileCardState extends State<CreatorProfileCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Created by',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[600],
-                        ),
-                  ),
-                  const SizedBox(height: 4),
                   Text(
                     displayName,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(

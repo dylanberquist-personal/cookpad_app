@@ -5,6 +5,7 @@ class PreferencesService {
   static const String _pantryEnabledKey = 'pantry_feature_enabled';
   static const String _themeModeKey = 'theme_mode';
   static const String _notificationsEnabledKey = 'notifications_enabled';
+  static const String _dietaryHintSeenKey = 'dietary_hint_seen';
 
   /// Check if pantry feature is enabled
   Future<bool> isPantryEnabled() async {
@@ -100,6 +101,24 @@ class PreferencesService {
       await enableNotifications();
       return true;
     }
+  }
+
+  /// Check if dietary hint has been seen
+  Future<bool> hasSeenDietaryHint() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_dietaryHintSeenKey) ?? false; // Default to false
+  }
+
+  /// Mark dietary hint as seen
+  Future<void> setDietaryHintSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_dietaryHintSeenKey, true);
+  }
+
+  /// Reset dietary hint (for testing or after profile update)
+  Future<void> resetDietaryHint() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_dietaryHintSeenKey, false);
   }
 }
 

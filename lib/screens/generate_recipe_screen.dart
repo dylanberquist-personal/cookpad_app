@@ -33,6 +33,7 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
   final _preferencesService = PreferencesService();
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
+  final GlobalKey _dietaryButtonKey = GlobalKey(); // Key for positioning tooltip
   
   AiChatSessionModel? _currentSession;
   List<ChatMessageModel> _messages = [];
@@ -48,24 +49,39 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
   List<PantryItemModel> _pantryItems = []; // Store pantry items
   bool _isInitialized = false; // Track if widget is initialized
   bool _considerDietaryRestrictions = false; // Track if dietary restrictions should be considered
+  OverlayEntry? _dietaryHintOverlay; // Overlay for dietary hint bubble
+  bool _hasShownHintThisSession = false; // Track if hint was shown in this session
+  bool _isScreenVisible = false; // Track if screen is currently visible
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadUserProfile();
+    _initializeData();
     _initializeSession();
-    _loadPantryStatus().then((_) {
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
+  }
+
+  Future<void> _initializeData() async {
+    await Future.wait([
+      _loadUserProfile(),
+      _loadPantryStatus(),
+    ]);
+    
+    if (mounted) {
+      setState(() {
+        _isInitialized = true;
+      });
+      // Only check and show hint if screen is actually visible
+      final isCurrent = ModalRoute.of(context)?.isCurrent ?? false;
+      if (isCurrent && !_hasShownHintThisSession) {
+        await _checkAndShowDietaryHint();
       }
-    });
+    }
   }
 
   @override
   void dispose() {
+    _removeDietaryHintOverlay();
     WidgetsBinding.instance.removeObserver(this);
     _messageController.dispose();
     _scrollController.dispose();
@@ -77,16 +93,47 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
     if (state == AppLifecycleState.resumed) {
       // Reload pantry status when app resumes
       _loadPantryStatus();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // Remove overlay when app goes to background
+      _removeDietaryHintOverlay();
     }
+  }
+
+  @override
+  void deactivate() {
+    // Remove overlay when navigating away from this screen
+    _removeDietaryHintOverlay();
+    super.deactivate();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Reload pantry status when dependencies change (including route changes)
-    // Only reload if widget is initialized to avoid unnecessary calls
-    if (_isInitialized) {
-      _loadPantryStatus();
+    
+    // Check if this screen is now visible
+    final isCurrent = ModalRoute.of(context)?.isCurrent ?? false;
+    
+    // If screen just became visible
+    if (isCurrent && !_isScreenVisible) {
+      _isScreenVisible = true;
+      print('Generate Recipe screen became visible');
+      
+      // Reload data when dependencies change (including route changes)
+      // Only reload if widget is initialized to avoid unnecessary calls
+      if (_isInitialized && mounted) {
+        _loadPantryStatus();
+        _loadUserProfile().then((_) {
+          // Only check for hint if we're still on this screen and haven't shown it yet
+          if (mounted && ModalRoute.of(context)?.isCurrent == true && !_hasShownHintThisSession) {
+            _checkAndShowDietaryHint();
+          }
+        });
+      }
+    } else if (!isCurrent && _isScreenVisible) {
+      // Screen is no longer visible
+      _isScreenVisible = false;
+      _removeDietaryHintOverlay();
+      print('Generate Recipe screen is no longer visible');
     }
   }
 
@@ -120,6 +167,92 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
     } catch (e) {
       print('Error loading user profile: $e');
     }
+  }
+
+  Future<void> _checkAndShowDietaryHint() async {
+    print('Checking dietary hint...');
+    print('User dietary restrictions: ${_currentUser?.dietaryRestrictions}');
+    
+    // Only show if user has dietary restrictions
+    if (_currentUser?.dietaryRestrictions.isEmpty ?? true) {
+      print('No dietary restrictions found, skipping hint');
+      return;
+    }
+
+    // Check if hint has been shown for this session
+    final hasSeenHint = await _preferencesService.hasSeenDietaryHint();
+    print('Has seen hint: $hasSeenHint');
+    if (hasSeenHint) {
+      print('Hint already seen, skipping');
+      return;
+    }
+
+    // Wait for widget to be fully built
+    await Future.delayed(const Duration(milliseconds: 800));
+    
+    if (mounted) {
+      print('Showing dietary hint overlay');
+      _showDietaryHintOverlay();
+    }
+  }
+
+  void _showDietaryHintOverlay() {
+    // Only show if we're on the current route (not navigating away)
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true || _hasShownHintThisSession) {
+      print('Not showing hint - not on current route or already shown this session');
+      return;
+    }
+
+    // Mark as shown for this session
+    _hasShownHintThisSession = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Double check we're still mounted and on current route
+      if (!mounted || ModalRoute.of(context)?.isCurrent != true) {
+        print('Not showing hint - route changed during callback');
+        return;
+      }
+
+      final RenderBox? renderBox = _dietaryButtonKey.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox == null) {
+        print('Could not find dietary button render box');
+        return;
+      }
+
+      final position = renderBox.localToGlobal(Offset.zero);
+      final size = renderBox.size;
+      final buttonCenterX = position.dx + (size.width / 2);
+
+      print('Button position: $position, size: $size');
+      print('Inserting overlay at top: ${position.dy + size.height + 8}, left: ${buttonCenterX - 100}');
+
+      _dietaryHintOverlay = OverlayEntry(
+        builder: (context) => Positioned(
+          top: position.dy + size.height + 8, // 8px below button
+          left: buttonCenterX - 100, // Center the bubble (200px wide / 2)
+          child: Material(
+            color: Colors.transparent,
+            child: _DietaryHintBubble(
+              onClose: _dismissDietaryHint,
+            ),
+          ),
+        ),
+      );
+
+      Overlay.of(context).insert(_dietaryHintOverlay!);
+      print('Overlay inserted successfully');
+    });
+  }
+
+  void _removeDietaryHintOverlay() {
+    _dietaryHintOverlay?.remove();
+    _dietaryHintOverlay = null;
+  }
+
+  Future<void> _dismissDietaryHint() async {
+    _removeDietaryHintOverlay();
+    // Mark as seen so it doesn't show again
+    await _preferencesService.setDietaryHintSeen();
   }
 
 
@@ -1089,6 +1222,7 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
                   ? 'Considering dietary restrictions: ${_currentUser!.dietaryRestrictions.join(', ')}'
                   : 'Not considering dietary restrictions',
               child: IconButton(
+                key: _dietaryButtonKey,
                 icon: Icon(
                   _considerDietaryRestrictions ? Icons.restaurant : Icons.restaurant_outlined,
                   color: _considerDietaryRestrictions ? Colors.orange : Colors.grey,
@@ -1110,6 +1244,18 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
             onPressed: _showChatHistory,
             tooltip: 'Chat History',
           ),
+          // Debug: Long press to reset and show dietary hint
+          if (_currentUser?.dietaryRestrictions.isNotEmpty ?? false)
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              onPressed: () async {
+                // Reset hint and show it
+                await _preferencesService.resetDietaryHint();
+                _hasShownHintThisSession = false; // Allow showing again
+                await _checkAndShowDietaryHint();
+              },
+              tooltip: 'Show Dietary Hint (Debug)',
+            ),
         ],
       ),
       body: Column(
@@ -2075,4 +2221,108 @@ class _ChatHistoryItem extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DietaryHintBubble extends StatelessWidget {
+  final VoidCallback onClose;
+
+  const _DietaryHintBubble({required this.onClose});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Arrow pointer pointing up
+        CustomPaint(
+          size: const Size(20, 10),
+          painter: _TrianglePainter(),
+        ),
+        // Bubble container
+        Container(
+          width: 200,
+          decoration: BoxDecoration(
+            color: Colors.orange,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.info_outline,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Toggle your dietary restrictions',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 24), // Space for close button
+                  ],
+                ),
+              ),
+              Positioned(
+                top: 4,
+                right: 4,
+                child: GestureDetector(
+                  onTap: onClose,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Custom painter for the triangle pointer
+class _TrianglePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.orange
+      ..style = PaintingStyle.fill;
+
+    final path = Path();
+    path.moveTo(size.width / 2, 0); // Top center point
+    path.lineTo(0, size.height); // Bottom left
+    path.lineTo(size.width, size.height); // Bottom right
+    path.close();
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
+import '../../services/preferences_service.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -10,6 +11,7 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final _authService = AuthService();
+  final _preferencesService = PreferencesService();
   String? _selectedSkillLevel;
   final List<String> _dietaryRestrictions = [];
   final List<String> _cuisinePreferences = [];
@@ -23,6 +25,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     'nut-free',
     'keto',
     'paleo',
+    'pescatarian',
+    'carnivore',
   ];
   final List<String> _cuisineOptions = [
     'Italian',
@@ -85,22 +89,43 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             Wrap(
               spacing: 12,
               runSpacing: 12,
-              children: _dietaryOptions.map((option) {
-                final isSelected = _dietaryRestrictions.contains(option);
-                return FilterChip(
-                  label: Text(option),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    setState(() {
-                      if (selected) {
-                        _dietaryRestrictions.add(option);
-                      } else {
-                        _dietaryRestrictions.remove(option);
-                      }
-                    });
-                  },
-                );
-              }).toList(),
+              children: [
+                ..._dietaryOptions.map((option) {
+                  final isSelected = _dietaryRestrictions.contains(option);
+                  return FilterChip(
+                    label: Text(option),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      setState(() {
+                        if (selected) {
+                          _dietaryRestrictions.add(option);
+                        } else {
+                          _dietaryRestrictions.remove(option);
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+                // Custom dietary restrictions
+                ..._dietaryRestrictions
+                    .where((r) => !_dietaryOptions.contains(r))
+                    .map((restriction) {
+                  return FilterChip(
+                    label: Text(restriction),
+                    selected: true,
+                    onSelected: (selected) {
+                      setState(() {
+                        _dietaryRestrictions.remove(restriction);
+                      });
+                    },
+                  );
+                }).toList(),
+                // Add custom option button
+                ActionChip(
+                  label: const Text('+'),
+                  onPressed: _showAddCustomDietaryDialog,
+                ),
+              ],
             ),
             const SizedBox(height: 32),
             const Text(
@@ -152,6 +177,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         dietaryRestrictions: _dietaryRestrictions,
         cuisinePreferences: _cuisinePreferences.isNotEmpty ? _cuisinePreferences : null,
       );
+      
+      // Reset dietary hint if user has dietary restrictions
+      if (_dietaryRestrictions.isNotEmpty) {
+        await _preferencesService.resetDietaryHint();
+      }
+      
       // Navigation handled by AuthWrapper
     } catch (e) {
       if (mounted) {
@@ -159,6 +190,51 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           SnackBar(content: Text('Error: ${e.toString()}')),
         );
       }
+    }
+  }
+
+  Future<void> _showAddCustomDietaryDialog() async {
+    final TextEditingController controller = TextEditingController();
+    
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Custom'),
+        content: TextField(
+          controller: controller,
+          maxLength: 25,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Enter dietary restriction',
+            border: OutlineInputBorder(),
+            counterText: '',
+          ),
+          textCapitalization: TextCapitalization.words,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) {
+                Navigator.pop(context, value);
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      setState(() {
+        if (!_dietaryRestrictions.contains(result)) {
+          _dietaryRestrictions.add(result);
+        }
+      });
     }
   }
 }

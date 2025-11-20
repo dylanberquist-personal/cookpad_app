@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/follow_service.dart';
 import '../services/recipe_service_supabase.dart';
 import '../services/collection_service.dart';
+import '../services/preferences_service.dart';
 import '../models/user_model.dart';
 import '../models/recipe_model.dart';
 import '../models/collection_model.dart';
@@ -32,6 +33,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
   final _followService = FollowService();
   final _recipeService = RecipeServiceSupabase();
   final _collectionService = CollectionService();
+  final _preferencesService = PreferencesService();
   final _supabase = SupabaseConfig.client;
   final _scrollController = ScrollController();
   final GlobalKey _recipesKey = GlobalKey();
@@ -74,6 +76,8 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
     'Low-Carb',
     'Halal',
     'Kosher',
+    'Pescatarian',
+    'Carnivore',
   ];
 
   @override
@@ -329,6 +333,10 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
 
     setState(() => _isSaving = true);
     try {
+      // Check if dietary restrictions have changed
+      final oldRestrictions = _userProfile?.dietaryRestrictions ?? [];
+      final restrictionsChanged = !_listsEqual(oldRestrictions, _selectedDietaryRestrictions);
+
       await _authService.updateUserProfile(
         displayName: _displayNameController.text.isEmpty 
             ? null 
@@ -337,6 +345,11 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
         skillLevel: _selectedSkillLevel,
         dietaryRestrictions: _selectedDietaryRestrictions,
       );
+
+      // If dietary restrictions changed and user has restrictions, reset hint
+      if (restrictionsChanged && _selectedDietaryRestrictions.isNotEmpty) {
+        await _preferencesService.resetDietaryHint();
+      }
 
       await _loadProfileData();
       setState(() {
@@ -357,6 +370,13 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
         );
       }
     }
+  }
+
+  bool _listsEqual(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    final aSet = Set<String>.from(a);
+    final bSet = Set<String>.from(b);
+    return aSet.difference(bSet).isEmpty && bSet.difference(aSet).isEmpty;
   }
 
   Future<void> _pickImage() async {
@@ -905,32 +925,62 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                               ? Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
-                                  children: _dietaryOptions.map((option) {
-                                    final isSelected = _selectedDietaryRestrictions.contains(option);
-                                    return FilterChip(
-                                      label: Text(
-                                        option,
-                                        style: TextStyle(
-                                          color: isSelected
-                                              ? (isDark ? Colors.white : Theme.of(context).primaryColor)
-                                              : (isDark ? Colors.grey[300] : Colors.black87),
+                                  children: [
+                                    ..._dietaryOptions.map((option) {
+                                      final isSelected = _selectedDietaryRestrictions.contains(option);
+                                      return FilterChip(
+                                        label: Text(
+                                          option,
+                                          style: TextStyle(
+                                            color: isSelected
+                                                ? (isDark ? Colors.white : Theme.of(context).primaryColor)
+                                                : (isDark ? Colors.grey[300] : Colors.black87),
+                                          ),
                                         ),
-                                      ),
-                                      selected: isSelected,
-                                      selectedColor: Theme.of(context).primaryColor.withOpacity(isDark ? 0.4 : 0.2),
-                                      checkmarkColor: isDark ? Colors.white : Theme.of(context).primaryColor,
+                                        selected: isSelected,
+                                        selectedColor: Theme.of(context).primaryColor.withOpacity(isDark ? 0.4 : 0.2),
+                                        checkmarkColor: isDark ? Colors.white : Theme.of(context).primaryColor,
+                                        backgroundColor: isDark ? Colors.grey[800] : null,
+                                        onSelected: (selected) {
+                                          setState(() {
+                                            if (selected) {
+                                              _selectedDietaryRestrictions.add(option);
+                                            } else {
+                                              _selectedDietaryRestrictions.remove(option);
+                                            }
+                                          });
+                                        },
+                                      );
+                                    }).toList(),
+                                    // Custom dietary restrictions
+                                    ..._selectedDietaryRestrictions
+                                        .where((r) => !_dietaryOptions.contains(r))
+                                        .map((restriction) {
+                                      return FilterChip(
+                                        label: Text(
+                                          restriction,
+                                          style: TextStyle(
+                                            color: isDark ? Colors.white : Theme.of(context).primaryColor,
+                                          ),
+                                        ),
+                                        selected: true,
+                                        selectedColor: Theme.of(context).primaryColor.withOpacity(isDark ? 0.4 : 0.2),
+                                        checkmarkColor: isDark ? Colors.white : Theme.of(context).primaryColor,
+                                        backgroundColor: isDark ? Colors.grey[800] : null,
+                                        onSelected: (selected) {
+                                          setState(() {
+                                            _selectedDietaryRestrictions.remove(restriction);
+                                          });
+                                        },
+                                      );
+                                    }).toList(),
+                                    // Add custom option button
+                                    ActionChip(
+                                      label: const Text('+'),
                                       backgroundColor: isDark ? Colors.grey[800] : null,
-                                      onSelected: (selected) {
-                                        setState(() {
-                                          if (selected) {
-                                            _selectedDietaryRestrictions.add(option);
-                                          } else {
-                                            _selectedDietaryRestrictions.remove(option);
-                                          }
-                                        });
-                                      },
-                                    );
-                                  }).toList(),
+                                      onPressed: _showAddCustomDietaryDialog,
+                                    ),
+                                  ],
                                 )
                               : _userProfile!.dietaryRestrictions.isEmpty
                                   ? Text(
@@ -1322,6 +1372,64 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
         ],
       ],
     );
+  }
+
+  Future<void> _showAddCustomDietaryDialog() async {
+    final TextEditingController controller = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? Colors.grey[850] : null,
+        title: Text(
+          'Add Custom',
+          style: TextStyle(color: isDark ? Colors.white : null),
+        ),
+        content: TextField(
+          controller: controller,
+          maxLength: 25,
+          autofocus: true,
+          style: TextStyle(color: isDark ? Colors.white : null),
+          decoration: InputDecoration(
+            hintText: 'Enter dietary restriction',
+            hintStyle: TextStyle(color: isDark ? Colors.grey[400] : null),
+            border: const OutlineInputBorder(),
+            counterText: '',
+            enabledBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: isDark ? Colors.grey[600]! : Colors.grey),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: Theme.of(context).primaryColor),
+            ),
+          ),
+          textCapitalization: TextCapitalization.words,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) {
+                Navigator.pop(context, value);
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      setState(() {
+        if (!_selectedDietaryRestrictions.contains(result)) {
+          _selectedDietaryRestrictions.add(result);
+        }
+      });
+    }
   }
 }
 

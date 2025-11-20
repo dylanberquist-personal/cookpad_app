@@ -908,10 +908,18 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                                   children: _dietaryOptions.map((option) {
                                     final isSelected = _selectedDietaryRestrictions.contains(option);
                                     return FilterChip(
-                                      label: Text(option),
+                                      label: Text(
+                                        option,
+                                        style: TextStyle(
+                                          color: isSelected
+                                              ? (isDark ? Colors.white : Theme.of(context).primaryColor)
+                                              : (isDark ? Colors.grey[300] : Colors.black87),
+                                        ),
+                                      ),
                                       selected: isSelected,
-                                      selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
-                                      checkmarkColor: Theme.of(context).primaryColor,
+                                      selectedColor: Theme.of(context).primaryColor.withOpacity(isDark ? 0.4 : 0.2),
+                                      checkmarkColor: isDark ? Colors.white : Theme.of(context).primaryColor,
+                                      backgroundColor: isDark ? Colors.grey[800] : null,
                                       onSelected: (selected) {
                                         setState(() {
                                           if (selected) {
@@ -928,7 +936,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                                   ? Text(
                                       'No dietary restrictions',
                                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                            color: Colors.grey[600],
+                                            color: isDark ? Colors.grey[400] : Colors.grey[600],
                                             fontStyle: FontStyle.italic,
                                           ),
                                     )
@@ -938,9 +946,11 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                                       children: _userProfile!.dietaryRestrictions.map((restriction) {
                                         return Chip(
                                           label: Text(restriction),
-                                          backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                                          backgroundColor: isDark 
+                                              ? Theme.of(context).primaryColor.withOpacity(0.3)
+                                              : Theme.of(context).primaryColor.withOpacity(0.1),
                                           labelStyle: TextStyle(
-                                            color: Theme.of(context).primaryColor,
+                                            color: isDark ? Colors.white : Theme.of(context).primaryColor,
                                             fontWeight: FontWeight.w500,
                                           ),
                                         );

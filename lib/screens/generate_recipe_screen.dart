@@ -47,6 +47,7 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
   bool _pantryEnabled = false; // Track if pantry feature is enabled
   List<PantryItemModel> _pantryItems = []; // Store pantry items
   bool _isInitialized = false; // Track if widget is initialized
+  bool _considerDietaryRestrictions = false; // Track if dietary restrictions should be considered
 
   @override
   void initState() {
@@ -520,10 +521,18 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
         pantryItems = _pantryItems;
       }
 
+      // Get dietary restrictions if user wants to consider them
+      List<String>? dietaryRestrictions;
+      if (_considerDietaryRestrictions && 
+          _currentUser?.dietaryRestrictions.isNotEmpty == true) {
+        dietaryRestrictions = _currentUser!.dietaryRestrictions;
+      }
+
       final assistantResponse = await _aiService.generateRecipeChat(
         userMessage: userMessage,
         chatHistory: _messages,
         pantryItems: pantryItems,
+        dietaryRestrictions: dietaryRestrictions,
       );
 
       final assistantMsg = ChatMessageModel(
@@ -1069,6 +1078,24 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
                 onPressed: () {
                   setState(() {
                     _considerPantry = !_considerPantry;
+                  });
+                },
+              ),
+            ),
+          // Dietary restrictions toggle (only show if user has dietary restrictions)
+          if (_currentUser?.dietaryRestrictions.isNotEmpty ?? false)
+            Tooltip(
+              message: _considerDietaryRestrictions
+                  ? 'Considering dietary restrictions: ${_currentUser!.dietaryRestrictions.join(', ')}'
+                  : 'Not considering dietary restrictions',
+              child: IconButton(
+                icon: Icon(
+                  _considerDietaryRestrictions ? Icons.restaurant : Icons.restaurant_outlined,
+                  color: _considerDietaryRestrictions ? Colors.orange : Colors.grey,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _considerDietaryRestrictions = !_considerDietaryRestrictions;
                   });
                 },
               ),
@@ -1649,7 +1676,7 @@ class _RecipeCardState extends State<_RecipeCard> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.grey[50],
+                color: isDark ? Colors.grey[850] : Colors.grey[50],
                 borderRadius: const BorderRadius.only(
                   bottomLeft: Radius.circular(16),
                   bottomRight: Radius.circular(16),
@@ -1783,10 +1810,12 @@ class _ChatInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? Colors.grey[900] : Colors.white,
         boxShadow: [
           BoxShadow(
             color: Colors.grey.withOpacity(0.2),
@@ -1801,7 +1830,7 @@ class _ChatInput extends StatelessWidget {
             PopupMenuButton<String>(
               icon: Icon(
                 hasSelectedImage ? Icons.image : Icons.add_photo_alternate,
-                color: hasSelectedImage ? Colors.orange : Colors.grey[700],
+                color: hasSelectedImage ? Colors.orange : (isDark ? Colors.grey[400] : Colors.grey[700]),
               ),
               tooltip: 'Attach photo',
               onSelected: (value) {

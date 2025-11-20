@@ -33,6 +33,7 @@ class CollectionService {
         name: collection.name,
         description: collection.description,
         isPublic: collection.isPublic,
+        color: collection.color,
         createdAt: collection.createdAt,
         updatedAt: collection.updatedAt,
         recipeCount: count,
@@ -66,6 +67,7 @@ class CollectionService {
       name: collection.name,
       description: collection.description,
       isPublic: collection.isPublic,
+      color: collection.color,
       createdAt: collection.createdAt,
       updatedAt: collection.updatedAt,
       recipeCount: count,
@@ -77,6 +79,7 @@ class CollectionService {
     required String name,
     String? description,
     bool isPublic = false,
+    String color = '#FF6B6B',
   }) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
@@ -88,6 +91,7 @@ class CollectionService {
           'name': name,
           'description': description,
           'is_public': isPublic,
+          'color': color,
         })
         .select()
         .single();
@@ -101,6 +105,7 @@ class CollectionService {
     String? name,
     String? description,
     bool? isPublic,
+    String? color,
   }) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
@@ -117,6 +122,7 @@ class CollectionService {
     if (name != null) updateData['name'] = name;
     if (description != null) updateData['description'] = description;
     if (isPublic != null) updateData['is_public'] = isPublic;
+    if (color != null) updateData['color'] = color;
 
     await _supabase
         .from('collections')
@@ -342,6 +348,7 @@ class CollectionService {
         name: collection.name,
         description: collection.description,
         isPublic: collection.isPublic,
+        color: collection.color,
         createdAt: collection.createdAt,
         updatedAt: collection.updatedAt,
         recipeCount: count,
@@ -395,6 +402,7 @@ class CollectionService {
         name: collection.name,
         description: collection.description,
         isPublic: collection.isPublic,
+        color: collection.color,
         createdAt: collection.createdAt,
         updatedAt: collection.updatedAt,
         recipeCount: count,
@@ -544,6 +552,7 @@ class CollectionService {
           name: collection.name,
           description: collection.description,
           isPublic: collection.isPublic,
+          color: collection.color,
           createdAt: collection.createdAt,
           updatedAt: collection.updatedAt,
           recipeCount: count,

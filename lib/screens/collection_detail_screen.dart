@@ -182,15 +182,25 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final collectionColor = _parseColor((_collection ?? widget.collection).color);
+    final iconColor = _getContrastColor((_collection ?? widget.collection).color);
+    
     return Scaffold(
       appBar: AppBar(
-        title: Text(_collection?.name ?? widget.collection.name),
+        backgroundColor: collectionColor,
+        foregroundColor: iconColor,
+        title: Text(
+          _collection?.name ?? widget.collection.name,
+          style: TextStyle(color: iconColor),
+        ),
+        iconTheme: IconThemeData(color: iconColor),
         actions: widget.isOwner
             ? [
                 IconButton(
                   icon: const Icon(Icons.share),
                   onPressed: _shareCollection,
                   tooltip: 'Share Collection',
+                  color: iconColor,
                 ),
                 IconButton(
                   icon: const Icon(Icons.edit),
@@ -206,6 +216,7 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
                     _loadRecipes();
                   },
                   tooltip: 'Edit Collection',
+                  color: iconColor,
                 ),
               ]
             : null,
@@ -385,6 +396,20 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
         ),
       ),
     );
+  }
+
+  // Helper method to parse hex color string to Color
+  Color _parseColor(String hexColor) {
+    hexColor = hexColor.replaceAll('#', '');
+    return Color(int.parse('FF$hexColor', radix: 16));
+  }
+
+  // Helper method to get contrasting color for text/icons
+  Color _getContrastColor(String hexColor) {
+    final color = _parseColor(hexColor);
+    // Calculate luminance
+    final luminance = (0.299 * color.red + 0.587 * color.green + 0.114 * color.blue) / 255;
+    return luminance > 0.5 ? Colors.black : Colors.white;
   }
 }
 

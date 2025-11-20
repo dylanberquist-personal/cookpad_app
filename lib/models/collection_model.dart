@@ -4,6 +4,7 @@ class CollectionModel {
   final String name;
   final String? description;
   final bool isPublic;
+  final String color; // Hex color code for the collection card
   final DateTime createdAt;
   final DateTime updatedAt;
   final int recipeCount; // computed
@@ -16,6 +17,7 @@ class CollectionModel {
     required this.name,
     this.description,
     this.isPublic = false,
+    this.color = '#FF6B6B', // Default coral red color
     required this.createdAt,
     required this.updatedAt,
     this.recipeCount = 0,
@@ -30,6 +32,7 @@ class CollectionModel {
       name: json['name'] as String,
       description: json['description'] as String?,
       isPublic: json['is_public'] as bool? ?? false,
+      color: json['color'] as String? ?? '#FF6B6B',
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
       recipeCount: json['recipe_count'] as int? ?? 0,
@@ -45,6 +48,7 @@ class CollectionModel {
       'name': name,
       'description': description,
       'is_public': isPublic,
+      'color': color,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };

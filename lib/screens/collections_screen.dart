@@ -659,8 +659,8 @@ class _CollectionCard extends StatelessWidget {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          Theme.of(context).primaryColor.withOpacity(0.7),
-                          Theme.of(context).primaryColor.withOpacity(0.4),
+                          _parseColor(collection.color).withOpacity(0.9),
+                          _parseColor(collection.color).withOpacity(0.6),
                         ],
                       ),
                     ),
@@ -786,6 +786,12 @@ class _CollectionCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // Helper method to parse hex color string to Color
+  Color _parseColor(String hexColor) {
+    hexColor = hexColor.replaceAll('#', '');
+    return Color(int.parse('FF$hexColor', radix: 16));
   }
 }
 

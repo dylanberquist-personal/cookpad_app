@@ -21,6 +21,23 @@ class _EditCollectionScreenState extends State<EditCollectionScreen> {
   final _collectionService = CollectionService();
   bool _isPublic = false;
   bool _isSaving = false;
+  String _selectedColor = '#FF6B6B'; // Default coral red
+
+  // Available color options
+  static const List<String> _colorOptions = [
+    '#FF6B6B', // Coral Red
+    '#4ECDC4', // Turquoise
+    '#45B7D1', // Sky Blue
+    '#96CEB4', // Sage Green
+    '#FFEAA7', // Soft Yellow
+    '#DFE6E9', // Light Gray
+    '#A29BFE', // Lavender
+    '#FD79A8', // Pink
+    '#74B9FF', // Light Blue
+    '#55EFC4', // Mint
+    '#FDCB6E', // Orange
+    '#E17055', // Terra Cotta
+  ];
 
   @override
   void initState() {
@@ -29,6 +46,7 @@ class _EditCollectionScreenState extends State<EditCollectionScreen> {
       _nameController.text = widget.collection!.name;
       _descriptionController.text = widget.collection!.description ?? '';
       _isPublic = widget.collection!.isPublic;
+      _selectedColor = widget.collection!.color;
     }
   }
 
@@ -53,6 +71,7 @@ class _EditCollectionScreenState extends State<EditCollectionScreen> {
               ? null
               : _descriptionController.text.trim(),
           isPublic: _isPublic,
+          color: _selectedColor,
         );
         
         if (mounted) {
@@ -70,6 +89,7 @@ class _EditCollectionScreenState extends State<EditCollectionScreen> {
               ? null
               : _descriptionController.text.trim(),
           isPublic: _isPublic,
+          color: _selectedColor,
         );
         
         if (mounted) {
@@ -127,7 +147,9 @@ class _EditCollectionScreenState extends State<EditCollectionScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 filled: true,
-                fillColor: Colors.grey[50],
+                fillColor: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey[850]
+                    : Colors.grey[50],
                 prefixIcon: const Icon(Icons.folder),
               ),
               validator: (value) {
@@ -150,11 +172,95 @@ class _EditCollectionScreenState extends State<EditCollectionScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 filled: true,
-                fillColor: Colors.grey[50],
+                fillColor: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey[850]
+                    : Colors.grey[50],
                 prefixIcon: const Icon(Icons.description),
               ),
               maxLines: 4,
               textCapitalization: TextCapitalization.sentences,
+            ),
+            const SizedBox(height: 24),
+
+            // Color picker section
+            Text(
+              'Collection Color',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey[850]
+                    : Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[700]!
+                      : Colors.grey[300]!,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Choose a color for your collection card',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[600],
+                        ),
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: _colorOptions.map((color) {
+                      final isSelected = _selectedColor == color;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedColor = color;
+                          });
+                        },
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: _parseColor(color),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Theme.of(context).primaryColor
+                                  : Colors.transparent,
+                              width: 3,
+                            ),
+                            boxShadow: isSelected
+                                ? [
+                                    BoxShadow(
+                                      color: Theme.of(context)
+                                          .primaryColor
+                                          .withOpacity(0.3),
+                                      blurRadius: 8,
+                                      spreadRadius: 2,
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: isSelected
+                              ? Icon(
+                                  Icons.check,
+                                  color: _getContrastColor(color),
+                                  size: 28,
+                                )
+                              : null,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 24),
 
@@ -189,7 +295,9 @@ class _EditCollectionScreenState extends State<EditCollectionScreen> {
 
             // Info card
             Card(
-              color: Colors.blue[50],
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.blue[900]?.withOpacity(0.3)
+                  : Colors.blue[50],
               elevation: 0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -198,13 +306,20 @@ class _EditCollectionScreenState extends State<EditCollectionScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, color: Colors.blue[700]),
+                    Icon(
+                      Icons.info_outline,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.blue[300]
+                          : Colors.blue[700],
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         'You can add recipes from recipe pages.',
                         style: TextStyle(
-                          color: Colors.blue[900],
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.blue[200]
+                              : Colors.blue[900],
                           fontSize: 13,
                         ),
                       ),
@@ -217,6 +332,20 @@ class _EditCollectionScreenState extends State<EditCollectionScreen> {
         ),
       ),
     );
+  }
+
+  // Helper method to parse hex color string to Color
+  Color _parseColor(String hexColor) {
+    hexColor = hexColor.replaceAll('#', '');
+    return Color(int.parse('FF$hexColor', radix: 16));
+  }
+
+  // Helper method to get contrasting color for the checkmark
+  Color _getContrastColor(String hexColor) {
+    final color = _parseColor(hexColor);
+    // Calculate luminance
+    final luminance = (0.299 * color.red + 0.587 * color.green + 0.114 * color.blue) / 255;
+    return luminance > 0.5 ? Colors.black : Colors.white;
   }
 }
 

@@ -9,12 +9,14 @@ import '../services/ai_recipe_service.dart';
 import '../services/pantry_service.dart';
 import '../services/preferences_service.dart';
 import '../services/collection_service.dart';
+import '../services/sharing_service.dart';
 import '../config/supabase_config.dart';
 import '../services/comment_service.dart';
 import '../models/comment_model.dart';
 import '../models/collection_model.dart';
 import '../widgets/creator_profile_card.dart';
 import '../widgets/notification_badge_icon.dart';
+import '../widgets/user_search_dialog.dart';
 import 'main_navigation.dart';
 
 class RecipeDetailScreenNew extends StatefulWidget {
@@ -34,6 +36,7 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
   final _pantryService = PantryService();
   final _preferencesService = PreferencesService();
   final _collectionService = CollectionService();
+  final _sharingService = SharingService();
   bool _isLoading = true;
   List<CommentModel> _comments = [];
   final TextEditingController _commentController = TextEditingController();
@@ -675,6 +678,203 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
     );
   }
 
+  Future<void> _shareRecipe() async {
+    // Check if recipe is private and show confirmation
+    print('🔒 Recipe isPublic: ${_recipe.isPublic}');
+    if (!_recipe.isPublic) {
+      print('🔒 Showing private recipe confirmation dialog');
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Share Private Recipe?'),
+          content: const Text(
+            'This recipe is private. The person you share it with will be able to view it even though it\'s not public. Are you sure you want to share?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Share Anyway'),
+            ),
+          ],
+        ),
+      );
+      
+      if (confirm != true) {
+        print('🔒 User cancelled private recipe share');
+        return; // User cancelled
+      }
+      print('🔒 User confirmed private recipe share');
+    } else {
+      print('🔒 Recipe is public, no confirmation needed');
+    }
+    
+    String? selectedUsername;
+    bool? wasReshare;
+    
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => UserSearchDialog(
+        title: 'Share Recipe',
+        onUserSelected: (user) async {
+          selectedUsername = user.username;
+          try {
+            // Check if already shared before sharing
+            final userId = SupabaseConfig.client.auth.currentUser?.id;
+            if (userId != null) {
+              final existing = await SupabaseConfig.client
+                  .from('shared_recipes')
+                  .select()
+                  .eq('recipe_id', _recipe.id)
+                  .eq('sender_id', userId)
+                  .eq('recipient_id', user.id)
+                  .maybeSingle();
+              
+              wasReshare = existing != null;
+            }
+            
+            await _sharingService.shareRecipe(_recipe.id, user.id);
+            return true;
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error sharing recipe: ${e.toString()}'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            return false;
+          }
+        },
+      ),
+    );
+    
+    // Show success message if sharing was successful
+    if (result == true && mounted) {
+      final message = wasReshare == true 
+          ? 'Recipe re-shared with $selectedUsername!'
+          : 'Recipe shared successfully!';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+  void _showRecipeOptionsMenu() {
+    final currentUserId = SupabaseConfig.client.auth.currentUser?.id;
+    final isOwner = currentUserId == _recipe.userId;
+    
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.auto_fix_high),
+              title: const Text('Remix Recipe'),
+              onTap: () {
+                Navigator.pop(context);
+                _remixRecipe();
+              },
+            ),
+            if (currentUserId != null) ...[
+              ListTile(
+                leading: const Icon(Icons.add_photo_alternate),
+                title: const Text('Add Image'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _addImageToRecipe();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.folder),
+                title: const Text('Add to Collection'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showAddToCollectionDialog();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.share),
+                title: const Text('Share Recipe'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _shareRecipe();
+                },
+              ),
+              // Toggle public/private (only for recipe owner)
+              if (isOwner)
+                ListTile(
+                  leading: Icon(_recipe.isPublic ? Icons.public_off : Icons.public),
+                  title: Text(_recipe.isPublic ? 'Make Private' : 'Make Public'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _toggleRecipeVisibility();
+                  },
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleRecipeVisibility() async {
+    try {
+      final newVisibility = !_recipe.isPublic;
+      
+      // Update the recipe in the database
+      await SupabaseConfig.client
+          .from('recipes')
+          .update({'is_public': newVisibility})
+          .eq('id', _recipe.id);
+      
+      // Reload the recipe to get the updated data
+      await _loadRecipe();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(newVisibility 
+                ? 'Recipe is now public' 
+                : 'Recipe is now private'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating recipe: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _submitComment() async {
     final text = _commentController.text.trim();
     if (text.isEmpty) return;
@@ -808,7 +1008,7 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
                     ),
             ),
             actions: [
-              // Remix button (always visible)
+              // Options menu button (consolidated Remix, Add Image, Add to Collection, Share)
               Container(
                 margin: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -816,27 +1016,12 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
                   shape: BoxShape.circle,
                 ),
                 child: IconButton(
-                  icon: const Icon(Icons.auto_fix_high),
+                  icon: const Icon(Icons.more_vert),
                   color: Colors.white,
-                  onPressed: _remixRecipe,
-                  tooltip: 'Remix Recipe',
+                  onPressed: _showRecipeOptionsMenu,
+                  tooltip: 'More Options',
                 ),
               ),
-              // Show add image button if user is authenticated (anyone can add images)
-              if (SupabaseConfig.client.auth.currentUser != null)
-                Container(
-                  margin: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
-                    shape: BoxShape.circle,
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.add_photo_alternate),
-                    color: Colors.white,
-                    onPressed: _addImageToRecipe,
-                    tooltip: 'Add Image',
-                  ),
-                ),
               // Nutrition info button (always visible)
               Container(
                 margin: const EdgeInsets.all(8),
@@ -851,6 +1036,7 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
                   tooltip: 'Nutrition Info',
                 ),
               ),
+              // Favorite button (always visible)
               Container(
                 margin: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -863,21 +1049,6 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
                 onPressed: _toggleFavorite,
                 ),
               ),
-              // Add to Collection button (only if authenticated)
-              if (SupabaseConfig.client.auth.currentUser != null)
-                Container(
-                  margin: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
-                    shape: BoxShape.circle,
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.folder),
-                    color: Colors.white,
-                    onPressed: _showAddToCollectionDialog,
-                    tooltip: 'Add to Collection',
-                  ),
-                ),
             ],
           ),
           SliverToBoxAdapter(
@@ -2192,8 +2363,9 @@ class _AddToCollectionDialogState extends State<_AddToCollectionDialog> {
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: const Icon(Icons.check),
                     onPressed: () => Navigator.of(context).pop(),
+                    tooltip: 'Done',
                   ),
                 ],
               ),

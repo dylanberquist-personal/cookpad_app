@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../services/notification_service.dart';
 import '../models/notification_model.dart';
 import 'recipe_detail_screen_new.dart';
+import 'collections_screen.dart';
 import '../services/recipe_service_supabase.dart';
 import 'my_profile_detail_screen.dart';
 
@@ -137,7 +138,38 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     await _markAsRead(notification);
 
     // Navigate based on notification type
-    if (notification.recipeId != null) {
+    if (notification.type == NotificationType.collectionShared) {
+      // Navigate to collections screen where pending collections are shown
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const CollectionsScreen(),
+          ),
+        );
+      }
+    } else if (notification.type == NotificationType.recipeShared && notification.recipeId != null) {
+      // Navigate to recipe detail screen
+      if (mounted) {
+        try {
+          final recipe = await _recipeService.getRecipeById(notification.recipeId!);
+          if (recipe != null && mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => RecipeDetailScreenNew(recipe: recipe),
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error loading recipe: $e')),
+            );
+          }
+        }
+      }
+    } else if (notification.recipeId != null) {
       // Navigate to recipe detail screen
       if (mounted) {
         try {
@@ -211,6 +243,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Colors.teal;
       case NotificationType.badgeEarned:
         return Colors.orange;
+      case NotificationType.collectionShared:
+        return Colors.indigo;
+      case NotificationType.recipeShared:
+        return Colors.cyan;
     }
   }
 

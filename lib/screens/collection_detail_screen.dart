@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../models/collection_model.dart';
 import '../models/recipe_model.dart';
 import '../services/collection_service.dart';
+import '../config/supabase_config.dart';
 import '../widgets/notification_badge_icon.dart';
+import '../widgets/user_search_dialog.dart';
 import 'recipe_detail_screen_new.dart';
 import 'edit_collection_screen.dart';
 import 'main_navigation.dart';
@@ -97,6 +99,87 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
     }
   }
 
+  Future<void> _shareCollection() async {
+    // Check if collection is private and show confirmation
+    if (!widget.collection.isPublic) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Share Private Collection?'),
+          content: const Text(
+            'This collection is private. The person you share it with will be able to view it even though it\'s not public. Are you sure you want to share?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Share Anyway'),
+            ),
+          ],
+        ),
+      );
+      
+      if (confirm != true) return; // User cancelled
+    }
+    
+    String? selectedUsername;
+    bool? wasReshare;
+    
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => UserSearchDialog(
+        title: 'Share Collection',
+        onUserSelected: (user) async {
+          selectedUsername = user.username;
+          try {
+            // Check if already shared before sharing
+            final userId = SupabaseConfig.client.auth.currentUser?.id;
+            if (userId != null) {
+              final existing = await SupabaseConfig.client
+                  .from('shared_collections')
+                  .select()
+                  .eq('collection_id', widget.collection.id)
+                  .eq('sender_id', userId)
+                  .eq('recipient_id', user.id)
+                  .maybeSingle();
+              
+              wasReshare = existing != null;
+            }
+            
+            await _collectionService.shareCollection(widget.collection.id, user.id);
+            return true;
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error sharing collection: ${e.toString()}'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            return false;
+          }
+        },
+      ),
+    );
+    
+    // Show success message if sharing was successful
+    if (result == true && mounted) {
+      final message = wasReshare == true 
+          ? 'Collection re-shared with $selectedUsername!'
+          : 'Collection shared successfully!';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -104,6 +187,11 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
         title: Text(_collection?.name ?? widget.collection.name),
         actions: widget.isOwner
             ? [
+                IconButton(
+                  icon: const Icon(Icons.share),
+                  onPressed: _shareCollection,
+                  tooltip: 'Share Collection',
+                ),
                 IconButton(
                   icon: const Icon(Icons.edit),
                   onPressed: () async {

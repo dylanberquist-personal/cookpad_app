@@ -9,6 +9,8 @@ enum NotificationType {
   remix,
   recipeImageAdded,
   badgeEarned,
+  collectionShared,
+  recipeShared,
 }
 
 extension NotificationTypeExtension on NotificationType {
@@ -28,6 +30,10 @@ extension NotificationTypeExtension on NotificationType {
         return 'recipe_image_added';
       case NotificationType.badgeEarned:
         return 'badge_earned';
+      case NotificationType.collectionShared:
+        return 'collection_shared';
+      case NotificationType.recipeShared:
+        return 'recipe_shared';
     }
   }
 
@@ -47,6 +53,10 @@ extension NotificationTypeExtension on NotificationType {
         return NotificationType.recipeImageAdded;
       case 'badge_earned':
         return NotificationType.badgeEarned;
+      case 'collection_shared':
+        return NotificationType.collectionShared;
+      case 'recipe_shared':
+        return NotificationType.recipeShared;
       default:
         return NotificationType.newFollower;
     }
@@ -68,6 +78,10 @@ extension NotificationTypeExtension on NotificationType {
         return 'Image Added';
       case NotificationType.badgeEarned:
         return 'Badge Earned';
+      case NotificationType.collectionShared:
+        return 'Collection Shared';
+      case NotificationType.recipeShared:
+        return 'Recipe Shared';
     }
   }
 
@@ -87,6 +101,10 @@ extension NotificationTypeExtension on NotificationType {
         return Icons.add_photo_alternate;
       case NotificationType.badgeEarned:
         return Icons.military_tech;
+      case NotificationType.collectionShared:
+        return Icons.folder_shared;
+      case NotificationType.recipeShared:
+        return Icons.share;
     }
   }
 }
@@ -112,6 +130,11 @@ class NotificationModel {
   final String? badgeIcon;
   final String? badgeDescription;
   
+  // Sharing-specific data
+  final String? collectionId;
+  final String? collectionName;
+  final String? sharedCollectionId;
+  
   // Custom message from database (used for badges)
   final String? customMessage;
 
@@ -131,6 +154,9 @@ class NotificationModel {
     this.badgeName,
     this.badgeIcon,
     this.badgeDescription,
+    this.collectionId,
+    this.collectionName,
+    this.sharedCollectionId,
     this.customMessage,
   });
 
@@ -140,6 +166,8 @@ class NotificationModel {
     String? badgeName;
     String? badgeIcon;
     String? badgeDescription;
+    String? collectionId;
+    String? sharedCollectionId;
     
     if (json['data'] != null && json['data'] is Map) {
       final data = json['data'] as Map<String, dynamic>;
@@ -147,6 +175,8 @@ class NotificationModel {
       badgeName = data['badge_name'] as String?;
       badgeIcon = data['badge_icon'] as String?;
       badgeDescription = data['badge_description'] as String?;
+      collectionId = data['collection_id'] as String?;
+      sharedCollectionId = data['shared_collection_id'] as String?;
     }
     
     return NotificationModel(
@@ -167,6 +197,9 @@ class NotificationModel {
       badgeName: badgeName,
       badgeIcon: badgeIcon,
       badgeDescription: badgeDescription,
+      collectionId: collectionId,
+      collectionName: json['collection_name'] as String?,
+      sharedCollectionId: sharedCollectionId,
       customMessage: json['message'] as String?,
     );
   }
@@ -198,7 +231,7 @@ class NotificationModel {
   }
 
   String get message {
-    final actorName = actor?.username ?? actor?.displayName ?? 'Someone';
+    final actorName = actor?.username ?? actor?.displayName ?? 'A user';
     switch (type) {
       case NotificationType.newFollower:
         return '$actorName started following you';
@@ -221,6 +254,13 @@ class NotificationModel {
           return '${badgeIcon ?? '🎖️'} Congratulations! You earned the "$badgeName" badge!';
         }
         return 'Congratulations! You earned a new badge!';
+      case NotificationType.collectionShared:
+        if (collectionName != null) {
+          return '$actorName shared a collection with you: $collectionName';
+        }
+        return '$actorName shared a collection with you';
+      case NotificationType.recipeShared:
+        return '$actorName sent you a recipe${recipeTitle != null ? ": $recipeTitle" : ""}';
     }
   }
   

@@ -174,8 +174,32 @@ class NotificationService {
       }
     }
 
+    // Fetch collection names for collection shared notifications
+    final collectionIds = notifications
+        .where((n) => n.collectionId != null)
+        .map((n) => n.collectionId!)
+        .toSet()
+        .toList();
+
+    Map<String, String> collectionNames = {};
+    if (collectionIds.isNotEmpty) {
+      final collectionsResponse = await _supabase
+          .from('collections')
+          .select('id, name')
+          .inFilter('id', collectionIds);
+
+      for (var collection in (collectionsResponse as List)) {
+        collectionNames[collection['id'] as String] = collection['name'] as String;
+      }
+    }
+
     // Update notifications with fetched data
     return notifications.map((notification) {
+      // Debug: log actor presence
+      if (notification.type == NotificationType.collectionShared || notification.type == NotificationType.recipeShared) {
+        print('📧 ${notification.type.name}: Actor = ${notification.actor?.username ?? "NULL"}, actorId = ${notification.actorId}');
+      }
+      
       return NotificationModel(
         id: notification.id,
         userId: notification.userId,
@@ -196,6 +220,11 @@ class NotificationService {
         badgeName: notification.badgeName,
         badgeIcon: notification.badgeIcon,
         badgeDescription: notification.badgeDescription,
+        collectionId: notification.collectionId,
+        collectionName: notification.collectionId != null
+            ? collectionNames[notification.collectionId]
+            : null,
+        sharedCollectionId: notification.sharedCollectionId,
         customMessage: notification.customMessage,
       );
     }).toList();
@@ -267,20 +296,26 @@ class NotificationService {
   /// Parse notification from Supabase JSON
   NotificationModel _notificationFromSupabaseJson(Map<String, dynamic> json) {
     final actorJson = json['actor'] as Map<String, dynamic>?;
+    final notifType = json['type'] as String;
     UserModel? actor;
     if (actorJson != null) {
       try {
         actor = UserModel.fromJson(actorJson);
+        print('🔔 Notification ($notifType): Actor parsed - ${actor.username}');
       } catch (e) {
-        print('Error parsing actor: $e');
+        print('❌ Error parsing actor for $notifType: $e');
       }
+    } else {
+      print('⚠️ Notification ($notifType): No actor data in JSON! actor_id: ${json['actor_id']}');
     }
 
-    // Parse badge data from the joined badge table or from the data JSONB field
+    // Parse badge and collection data from the joined badge table or from the data JSONB field
     String? badgeId;
     String? badgeName;
     String? badgeIcon;
     String? badgeDescription;
+    String? collectionId;
+    String? sharedCollectionId;
     
     // First try to get badge data from the joined badge relationship
     final badgeJson = json['badge'] as Map<String, dynamic>?;
@@ -289,13 +324,21 @@ class NotificationService {
       badgeName = badgeJson['name'] as String?;
       badgeIcon = badgeJson['icon'] as String?;
       badgeDescription = badgeJson['description'] as String?;
-    } else if (json['data'] != null && json['data'] is Map) {
-      // Fallback to parsing from data JSONB field
+    }
+    
+    // Parse data JSONB field for badge and collection data
+    if (json['data'] != null && json['data'] is Map) {
       final data = json['data'] as Map<String, dynamic>;
-      badgeId = data['badge_id'] as String?;
-      badgeName = data['badge_name'] as String?;
-      badgeIcon = data['badge_icon'] as String?;
-      badgeDescription = data['badge_description'] as String?;
+      // Badge data (if not from joined table)
+      if (badgeId == null) {
+        badgeId = data['badge_id'] as String?;
+        badgeName = data['badge_name'] as String?;
+        badgeIcon = data['badge_icon'] as String?;
+        badgeDescription = data['badge_description'] as String?;
+      }
+      // Collection data
+      collectionId = data['collection_id'] as String?;
+      sharedCollectionId = data['shared_collection_id'] as String?;
     }
 
     return NotificationModel(
@@ -312,6 +355,8 @@ class NotificationService {
       badgeName: badgeName,
       badgeIcon: badgeIcon,
       badgeDescription: badgeDescription,
+      collectionId: collectionId,
+      sharedCollectionId: sharedCollectionId,
       customMessage: json['message'] as String?,
     );
   }

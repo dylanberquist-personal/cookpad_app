@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
+import '../main_navigation.dart';
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -26,32 +27,55 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _signIn() async {
     if (!_formKey.currentState!.validate()) return;
+    
+    // Prevent multiple rapid taps
+    if (_isLoading) return;
 
     setState(() => _isLoading = true);
 
     try {
-      await _authService.signInWithEmail(
+      print('🔐 Attempting sign in for: ${_emailController.text.trim()}');
+      
+      final response = await _authService.signInWithEmail(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
       
-      // Wait for auth state to update
-      await Future.delayed(const Duration(milliseconds: 300));
+      print('🔐 Sign in response - User: ${response.user?.id}, Session: ${response.session != null}');
       
       // Verify user is actually signed in
-      final currentUser = _authService.currentUser;
-      if (currentUser == null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Login failed. Please try again.')),
-        );
-        setState(() => _isLoading = false);
+      if (response.user == null || response.session == null) {
+        print('❌ Sign in failed - no user or session');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Login failed. Please try again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          setState(() => _isLoading = false);
+        }
         return;
       }
       
-      // Navigation handled by AuthWrapper, but ensure it updates
-      // The AuthWrapper will detect the auth state change via stream
-    } catch (e) {
+      print('✅ Sign in successful for user: ${response.user!.id}');
+      
+      // Navigate directly to MainNavigation
       if (mounted) {
+        print('🚀 Navigating to MainNavigation...');
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => MainNavigation(key: ValueKey(response.user!.id)),
+          ),
+          (route) => false, // Remove all previous routes
+        );
+      }
+    } catch (e) {
+      print('❌ Sign in error: $e');
+      
+      if (mounted) {
+        setState(() => _isLoading = false);
+        
         final errorMessage = e.toString();
         // Show user-friendly error message
         String displayMessage = 'Login failed. Please check your credentials.';
@@ -60,15 +84,18 @@ class _LoginScreenState extends State<LoginScreen> {
           displayMessage = 'Invalid email or password.';
         } else if (errorMessage.contains('network') || errorMessage.contains('connection')) {
           displayMessage = 'Network error. Please check your connection.';
+        } else {
+          // Show the actual error for debugging
+          displayMessage = 'Login error: ${errorMessage.length > 100 ? errorMessage.substring(0, 100) : errorMessage}';
         }
         
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(displayMessage)),
+          SnackBar(
+            content: Text(displayMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
         );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
       }
     }
   }

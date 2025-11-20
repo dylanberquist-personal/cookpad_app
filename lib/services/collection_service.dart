@@ -403,5 +403,157 @@ class CollectionService {
 
     return collectionsWithCounts;
   }
+
+  // ============================================
+  // SHARING METHODS
+  // ============================================
+
+  /// Share a collection with another user
+  Future<void> shareCollection(String collectionId, String recipientUserId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    // Verify collection ownership
+    final collection = await getCollectionById(collectionId);
+    if (collection == null) throw Exception('Collection not found');
+    if (collection.userId != userId) throw Exception('Unauthorized');
+
+    // Check if already shared
+    final existing = await _supabase
+        .from('shared_collections')
+        .select()
+        .eq('collection_id', collectionId)
+        .eq('sender_id', userId)
+        .eq('recipient_id', recipientUserId)
+        .maybeSingle();
+
+    if (existing != null) {
+      // Re-share: Delete the existing record and create a new one to trigger notification
+      await _supabase
+          .from('shared_collections')
+          .delete()
+          .eq('collection_id', collectionId)
+          .eq('sender_id', userId)
+          .eq('recipient_id', recipientUserId);
+    }
+
+    await _supabase.from('shared_collections').insert({
+      'collection_id': collectionId,
+      'sender_id': userId,
+      'recipient_id': recipientUserId,
+      'status': 'pending',
+    });
+  }
+
+  /// Get pending shared collections for the current user
+  Future<List<Map<String, dynamic>>> getPendingSharedCollections() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    print('🔍 Fetching pending shared collections for user: $userId');
+    
+    final response = await _supabase
+        .from('shared_collections')
+        .select('''
+          *,
+          collection:collections(*),
+          sender:users!sender_id(id, username, display_name, profile_picture_url)
+        ''')
+        .eq('recipient_id', userId)
+        .eq('status', 'pending')
+        .order('created_at', ascending: false);
+
+    print('🔍 Pending shared collections response: ${response.runtimeType}');
+    print('🔍 Pending shared collections count: ${(response as List).length}');
+    
+    if (response.isNotEmpty) {
+      print('🔍 First pending collection: ${response[0]}');
+    }
+
+    return response.cast<Map<String, dynamic>>();
+  }
+
+  /// Accept a shared collection
+  Future<void> acceptSharedCollection(String sharedCollectionId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    await _supabase
+        .from('shared_collections')
+        .update({'status': 'accepted', 'updated_at': DateTime.now().toIso8601String()})
+        .eq('id', sharedCollectionId)
+        .eq('recipient_id', userId);
+  }
+
+  /// Decline a shared collection
+  Future<void> declineSharedCollection(String sharedCollectionId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    await _supabase
+        .from('shared_collections')
+        .update({'status': 'declined', 'updated_at': DateTime.now().toIso8601String()})
+        .eq('id', sharedCollectionId)
+        .eq('recipient_id', userId);
+  }
+
+  /// Remove a shared collection (delete the shared_collections record)
+  Future<void> removeSharedCollection(String sharedCollectionId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    await _supabase
+        .from('shared_collections')
+        .delete()
+        .eq('id', sharedCollectionId)
+        .eq('recipient_id', userId);
+  }
+
+  /// Get all accepted shared collections for the current user
+  Future<List<CollectionModel>> getSharedCollections() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    final response = await _supabase
+        .from('shared_collections')
+        .select('''
+          id,
+          collection_id,
+          collection:collections(*)
+        ''')
+        .eq('recipient_id', userId)
+        .eq('status', 'accepted');
+
+    final collections = <CollectionModel>[];
+    for (var item in (response as List)) {
+      final sharedCollectionId = item['id'] as String;
+      final collectionData = item['collection'] as Map<String, dynamic>?;
+      
+      if (collectionData != null) {
+        final collection = CollectionModel.fromJson(
+          collectionData,
+          isShared: true,
+          sharedCollectionId: sharedCollectionId,
+        );
+        
+        // Get recipe count
+        final count = await _getRecipeCount(collection.id);
+        collections.add(CollectionModel(
+          id: collection.id,
+          userId: collection.userId,
+          name: collection.name,
+          description: collection.description,
+          isPublic: collection.isPublic,
+          createdAt: collection.createdAt,
+          updatedAt: collection.updatedAt,
+          recipeCount: count,
+          isShared: true,
+          sharedCollectionId: sharedCollectionId,
+        ));
+      }
+    }
+
+    return collections;
+  }
 }
 

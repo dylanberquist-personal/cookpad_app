@@ -76,7 +76,9 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    await _supabase.auth.signOut();
+    await _supabase.auth.signOut(scope: SignOutScope.global);
+    // Wait a moment to ensure session is fully cleared
+    await Future.delayed(const Duration(milliseconds: 200));
   }
 
   Future<void> resetPassword(String email) async {

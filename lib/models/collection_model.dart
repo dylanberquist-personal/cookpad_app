@@ -7,6 +7,8 @@ class CollectionModel {
   final DateTime createdAt;
   final DateTime updatedAt;
   final int recipeCount; // computed
+  final bool isShared; // Whether this collection was shared with the current user
+  final String? sharedCollectionId; // ID of the shared_collections record if shared
 
   CollectionModel({
     required this.id,
@@ -17,9 +19,11 @@ class CollectionModel {
     required this.createdAt,
     required this.updatedAt,
     this.recipeCount = 0,
+    this.isShared = false,
+    this.sharedCollectionId,
   });
 
-  factory CollectionModel.fromJson(Map<String, dynamic> json) {
+  factory CollectionModel.fromJson(Map<String, dynamic> json, {bool isShared = false, String? sharedCollectionId}) {
     return CollectionModel(
       id: json['id'] as String,
       userId: json['user_id'] as String,
@@ -29,6 +33,8 @@ class CollectionModel {
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
       recipeCount: json['recipe_count'] as int? ?? 0,
+      isShared: isShared,
+      sharedCollectionId: sharedCollectionId,
     );
   }
 

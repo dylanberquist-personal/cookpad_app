@@ -7,9 +7,11 @@ import '../services/follow_service.dart';
 import '../services/recipe_service_supabase.dart';
 import '../services/collection_service.dart';
 import '../services/preferences_service.dart';
+import '../services/badge_service.dart';
 import '../models/user_model.dart';
 import '../models/recipe_model.dart';
 import '../models/collection_model.dart';
+import '../models/badge_model.dart';
 import '../config/supabase_config.dart';
 import '../widgets/creator_profile_card.dart';
 import 'main_navigation.dart';
@@ -34,6 +36,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
   final _recipeService = RecipeServiceSupabase();
   final _collectionService = CollectionService();
   final _preferencesService = PreferencesService();
+  final _badgeService = BadgeService();
   final _supabase = SupabaseConfig.client;
   final _scrollController = ScrollController();
   final GlobalKey _recipesKey = GlobalKey();
@@ -62,6 +65,9 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
   int _followerCount = 0;
   int _followingCount = 0;
   double _averageRecipeRating = 0.0;
+  
+  // Badges
+  List<BadgeModel> _badges = [];
 
   // Available options
   final List<String> _skillLevels = ['beginner', 'intermediate', 'advanced'];
@@ -113,6 +119,9 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
 
       // Load stats
       await _loadStats();
+      
+      // Load badges
+      await _loadBadges();
 
       // Load follow status
       if (!_isOwner) {
@@ -183,6 +192,17 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
       }
     } catch (e) {
       print('Error loading stats: $e');
+    }
+  }
+
+  Future<void> _loadBadges() async {
+    try {
+      final badges = await _badgeService.getTopBadges(widget.userId, limit: 6);
+      setState(() {
+        _badges = badges;
+      });
+    } catch (e) {
+      print('Error loading badges: $e');
     }
   }
 
@@ -809,6 +829,57 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                   ),
                   const SizedBox(height: 24),
 
+                  // Badges Section
+                  if (_badges.isNotEmpty)
+                    Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.emoji_events, size: 20, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Badges',
+                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                            color: isDark ? Colors.white : Colors.black87,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                                Text(
+                                  '${_badges.length}',
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        color: Theme.of(context).primaryColor,
+                                      ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              children: _badges.map((badge) => _buildBadgeWidget(badge, isDark)).toList(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  
+                  if (_badges.isNotEmpty)
+                    const SizedBox(height: 16),
+
                   // Bio Card
                   if (_isEditing || (_userProfile!.bio != null && _userProfile!.bio!.isNotEmpty))
                     Card(
@@ -1219,6 +1290,63 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
     }
 
     return column;
+  }
+
+  Widget _buildBadgeWidget(BadgeModel badge, bool isDark) {
+    Color tierColor;
+    switch (badge.tier) {
+      case 'platinum':
+        tierColor = const Color(0xFFE5E4E2);
+        break;
+      case 'gold':
+        tierColor = const Color(0xFFFFD700);
+        break;
+      case 'silver':
+        tierColor = const Color(0xFFC0C0C0);
+        break;
+      case 'bronze':
+        tierColor = const Color(0xFFCD7F32);
+        break;
+      default:
+        tierColor = Colors.grey;
+    }
+
+    return Tooltip(
+      message: badge.description,
+      child: Container(
+        width: 80,
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.grey[850] : Colors.grey[100],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: tierColor.withOpacity(0.5),
+            width: 2,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              badge.icon,
+              style: const TextStyle(fontSize: 32),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              badge.name,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.grey[300] : Colors.black87,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildSkillLevelMeter(String skillLevel, {bool isEditing = false}) {

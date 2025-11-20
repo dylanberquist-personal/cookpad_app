@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import '../models/user_model.dart';
+import '../models/badge_model.dart';
+import '../services/badge_service.dart';
 import '../screens/my_profile_detail_screen.dart';
 
 /// A card widget that displays the creator's profile information
@@ -27,13 +29,39 @@ class CreatorProfileCard extends StatefulWidget {
 }
 
 class _CreatorProfileCardState extends State<CreatorProfileCard> {
+  final _badgeService = BadgeService();
   Color? _backgroundColor;
   bool _isLoadingColor = true;
+  List<BadgeModel> _topBadges = [];
+  bool _isLoadingBadges = true;
 
   @override
   void initState() {
     super.initState();
     _loadBackgroundColor();
+    _loadBadges();
+  }
+
+  Future<void> _loadBadges() async {
+    final userId = widget.creator?.id ?? widget.userId;
+    if (userId == null) {
+      setState(() => _isLoadingBadges = false);
+      return;
+    }
+
+    try {
+      final badges = await _badgeService.getTopBadges(userId, limit: 3);
+      if (mounted) {
+        setState(() {
+          _topBadges = badges;
+          _isLoadingBadges = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingBadges = false);
+      }
+    }
   }
 
   Future<void> _loadBackgroundColor() async {
@@ -176,6 +204,23 @@ class _CreatorProfileCardState extends State<CreatorProfileCard> {
                                 fontWeight: FontWeight.w500,
                               ),
                         ),
+                      ],
+                    ),
+                  ],
+                  if (_topBadges.isNotEmpty && !_isLoadingBadges) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        ..._topBadges.take(3).map((badge) => Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Tooltip(
+                            message: badge.name,
+                            child: Text(
+                              badge.icon,
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                          ),
+                        )),
                       ],
                     ),
                   ],

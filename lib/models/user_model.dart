@@ -1,3 +1,5 @@
+import 'badge_model.dart';
+
 class UserModel {
   final String id;
   final String email;
@@ -9,6 +11,7 @@ class UserModel {
   final String skillLevel; // beginner, intermediate, advanced
   final List<String> dietaryRestrictions;
   final List<String>? cuisinePreferences;
+  final List<BadgeModel>? badges; // User's earned badges (optional, loaded separately)
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -23,6 +26,7 @@ class UserModel {
     this.skillLevel = 'beginner',
     this.dietaryRestrictions = const [],
     this.cuisinePreferences,
+    this.badges,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -44,6 +48,11 @@ class UserModel {
       cuisinePreferences: (json['cuisine_preferences'] as List<dynamic>?)
           ?.map((e) => e.toString())
           .toList(),
+      badges: json['badges'] != null
+          ? (json['badges'] as List<dynamic>)
+              .map((e) => BadgeModel.fromJson(e as Map<String, dynamic>))
+              .toList()
+          : null,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -61,6 +70,7 @@ class UserModel {
       'skill_level': skillLevel,
       'dietary_restrictions': dietaryRestrictions,
       'cuisine_preferences': cuisinePreferences,
+      if (badges != null) 'badges': badges!.map((b) => b.toJson()).toList(),
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };

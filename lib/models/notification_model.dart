@@ -8,6 +8,7 @@ enum NotificationType {
   comment,
   remix,
   recipeImageAdded,
+  badgeEarned,
 }
 
 extension NotificationTypeExtension on NotificationType {
@@ -25,6 +26,8 @@ extension NotificationTypeExtension on NotificationType {
         return 'remix';
       case NotificationType.recipeImageAdded:
         return 'recipe_image_added';
+      case NotificationType.badgeEarned:
+        return 'badge_earned';
     }
   }
 
@@ -42,6 +45,8 @@ extension NotificationTypeExtension on NotificationType {
         return NotificationType.remix;
       case 'recipe_image_added':
         return NotificationType.recipeImageAdded;
+      case 'badge_earned':
+        return NotificationType.badgeEarned;
       default:
         return NotificationType.newFollower;
     }
@@ -61,6 +66,8 @@ extension NotificationTypeExtension on NotificationType {
         return 'Recipe Remixed';
       case NotificationType.recipeImageAdded:
         return 'Image Added';
+      case NotificationType.badgeEarned:
+        return 'Badge Earned';
     }
   }
 
@@ -78,6 +85,8 @@ extension NotificationTypeExtension on NotificationType {
         return Icons.auto_fix_high;
       case NotificationType.recipeImageAdded:
         return Icons.add_photo_alternate;
+      case NotificationType.badgeEarned:
+        return Icons.military_tech;
     }
   }
 }
@@ -96,6 +105,15 @@ class NotificationModel {
   final UserModel? actor;
   final String? recipeTitle;
   final String? commentContent;
+  
+  // Badge-specific data
+  final String? badgeId;
+  final String? badgeName;
+  final String? badgeIcon;
+  final String? badgeDescription;
+  
+  // Custom message from database (used for badges)
+  final String? customMessage;
 
   NotificationModel({
     required this.id,
@@ -109,9 +127,28 @@ class NotificationModel {
     this.actor,
     this.recipeTitle,
     this.commentContent,
+    this.badgeId,
+    this.badgeName,
+    this.badgeIcon,
+    this.badgeDescription,
+    this.customMessage,
   });
 
   factory NotificationModel.fromJson(Map<String, dynamic> json) {
+    // Parse badge data from JSONB 'data' field
+    String? badgeId;
+    String? badgeName;
+    String? badgeIcon;
+    String? badgeDescription;
+    
+    if (json['data'] != null && json['data'] is Map) {
+      final data = json['data'] as Map<String, dynamic>;
+      badgeId = data['badge_id'] as String?;
+      badgeName = data['badge_name'] as String?;
+      badgeIcon = data['badge_icon'] as String?;
+      badgeDescription = data['badge_description'] as String?;
+    }
+    
     return NotificationModel(
       id: json['id'] as String,
       userId: json['user_id'] as String,
@@ -126,11 +163,16 @@ class NotificationModel {
           : null,
       recipeTitle: json['recipe_title'] as String?,
       commentContent: json['comment_content'] as String?,
+      badgeId: badgeId,
+      badgeName: badgeName,
+      badgeIcon: badgeIcon,
+      badgeDescription: badgeDescription,
+      customMessage: json['message'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() {
-    return {
+    final json = {
       'id': id,
       'user_id': userId,
       'type': type.name,
@@ -139,7 +181,20 @@ class NotificationModel {
       'comment_id': commentId,
       'is_read': isRead,
       'created_at': createdAt.toIso8601String(),
+      'message': customMessage,
     };
+    
+    // Add badge data if present
+    if (badgeId != null || badgeName != null || badgeIcon != null || badgeDescription != null) {
+      json['data'] = {
+        if (badgeId != null) 'badge_id': badgeId,
+        if (badgeName != null) 'badge_name': badgeName,
+        if (badgeIcon != null) 'badge_icon': badgeIcon,
+        if (badgeDescription != null) 'badge_description': badgeDescription,
+      };
+    }
+    
+    return json;
   }
 
   String get message {
@@ -157,7 +212,23 @@ class NotificationModel {
         return '$actorName remixed your recipe${recipeTitle != null ? ": $recipeTitle" : ""}';
       case NotificationType.recipeImageAdded:
         return '$actorName added an image to your recipe${recipeTitle != null ? ": $recipeTitle" : ""}';
+      case NotificationType.badgeEarned:
+        // Use custom message from database if available, otherwise build from badge data
+        if (customMessage != null && customMessage!.isNotEmpty) {
+          return customMessage!;
+        }
+        if (badgeName != null) {
+          return '${badgeIcon ?? '🎖️'} Congratulations! You earned the "$badgeName" badge!';
+        }
+        return 'Congratulations! You earned a new badge!';
     }
   }
+  
+  // Get a detailed message that includes badge description
+  String get detailedMessage {
+    if (type == NotificationType.badgeEarned && badgeDescription != null) {
+      return badgeDescription!;
+    }
+    return '';
+  }
 }
-

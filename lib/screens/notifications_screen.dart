@@ -209,6 +209,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Colors.purple;
       case NotificationType.recipeImageAdded:
         return Colors.teal;
+      case NotificationType.badgeEarned:
+        return Colors.orange;
     }
   }
 
@@ -301,11 +303,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   color: notificationColor.withOpacity(0.1),
                                   shape: BoxShape.circle,
                                 ),
-                                child: Icon(
-                                  notification.type.icon,
-                                  color: notificationColor,
-                                  size: 24,
-                                ),
+                                child: notification.type == NotificationType.badgeEarned && 
+                                       notification.badgeIcon != null
+                                    ? Center(
+                                        child: Text(
+                                          notification.badgeIcon!,
+                                          style: const TextStyle(fontSize: 24),
+                                        ),
+                                      )
+                                    : Icon(
+                                        notification.type.icon,
+                                        color: notificationColor,
+                                        size: 24,
+                                      ),
                               ),
                               const SizedBox(width: 12),
                               // Content
@@ -385,6 +395,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                         color: isDark ? Colors.grey[100] : Colors.grey[800],
                                       ),
                                     ),
+                                    // Badge description if available
+                                    if (notification.type == NotificationType.badgeEarned && 
+                                        notification.detailedMessage.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        notification.detailedMessage,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                     // Recipe title if available
                                     if (notification.recipeTitle != null) ...[
                                       const SizedBox(height: 4),

@@ -268,9 +268,10 @@ RETURNS TRIGGER AS $$
 DECLARE
     v_badge_name TEXT;
     v_badge_icon TEXT;
+    v_badge_description TEXT;
 BEGIN
     -- Get badge details
-    SELECT name, icon INTO v_badge_name, v_badge_icon
+    SELECT name, icon, description INTO v_badge_name, v_badge_icon, v_badge_description
     FROM badges
     WHERE id = NEW.badge_id;
     
@@ -291,7 +292,8 @@ BEGIN
         jsonb_build_object(
             'badge_id', NEW.badge_id,
             'badge_name', v_badge_name,
-            'badge_icon', v_badge_icon
+            'badge_icon', v_badge_icon,
+            'badge_description', v_badge_description
         ),
         false,
         NOW()

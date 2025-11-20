@@ -114,6 +114,12 @@ class NotificationService {
             username,
             display_name,
             profile_picture_url
+          ),
+          badge:badges!badge_id(
+            id,
+            name,
+            icon,
+            description
           )
         ''')
         .eq('user_id', userId);
@@ -186,6 +192,11 @@ class NotificationService {
         commentContent: notification.commentId != null
             ? commentContents[notification.commentId]
             : null,
+        badgeId: notification.badgeId,
+        badgeName: notification.badgeName,
+        badgeIcon: notification.badgeIcon,
+        badgeDescription: notification.badgeDescription,
+        customMessage: notification.customMessage,
       );
     }).toList();
   }
@@ -265,6 +276,28 @@ class NotificationService {
       }
     }
 
+    // Parse badge data from the joined badge table or from the data JSONB field
+    String? badgeId;
+    String? badgeName;
+    String? badgeIcon;
+    String? badgeDescription;
+    
+    // First try to get badge data from the joined badge relationship
+    final badgeJson = json['badge'] as Map<String, dynamic>?;
+    if (badgeJson != null) {
+      badgeId = badgeJson['id'] as String?;
+      badgeName = badgeJson['name'] as String?;
+      badgeIcon = badgeJson['icon'] as String?;
+      badgeDescription = badgeJson['description'] as String?;
+    } else if (json['data'] != null && json['data'] is Map) {
+      // Fallback to parsing from data JSONB field
+      final data = json['data'] as Map<String, dynamic>;
+      badgeId = data['badge_id'] as String?;
+      badgeName = data['badge_name'] as String?;
+      badgeIcon = data['badge_icon'] as String?;
+      badgeDescription = data['badge_description'] as String?;
+    }
+
     return NotificationModel(
       id: json['id'] as String,
       userId: json['user_id'] as String,
@@ -275,6 +308,11 @@ class NotificationService {
       isRead: json['is_read'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
       actor: actor,
+      badgeId: badgeId,
+      badgeName: badgeName,
+      badgeIcon: badgeIcon,
+      badgeDescription: badgeDescription,
+      customMessage: json['message'] as String?,
     );
   }
 }

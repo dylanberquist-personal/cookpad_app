@@ -451,7 +451,7 @@ class _FeedScreenState extends State<FeedScreen> {
              CreatorProfileCard(creator: chef, showBorder: false),
              Positioned(
                top: 12,
-               right: 12,
+               right: 56,
                child: rankBadge,
              ),
             if (rank == 1)

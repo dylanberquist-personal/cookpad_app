@@ -4,6 +4,7 @@ import '../models/recipe_model.dart';
 import '../services/collection_service.dart';
 import 'recipe_detail_screen_new.dart';
 import 'edit_collection_screen.dart';
+import 'main_navigation.dart';
 
 class CollectionDetailScreen extends StatefulWidget {
   final CollectionModel collection;
@@ -245,6 +246,55 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
                 ],
               ),
             ),
+      bottomNavigationBar: SizedBox(
+        height: 60,
+        child: NavigationBar(
+          selectedIndex: 4,
+          onDestinationSelected: (index) {
+            if (index == 4) {
+              // Go back to previous screen (likely profile/collections)
+              Navigator.of(context).pop();
+              return;
+            }
+            // Navigate to main navigation with the selected index
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (context) => MainNavigation(initialIndex: index),
+              ),
+              (route) => false,
+            );
+          },
+          height: 60,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.home_outlined, size: 20),
+              selectedIcon: Icon(Icons.home, size: 20),
+              label: '',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.search_outlined, size: 20),
+              selectedIcon: Icon(Icons.search, size: 20),
+              label: '',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.auto_awesome_outlined, size: 20),
+              selectedIcon: Icon(Icons.auto_awesome, size: 20),
+              label: '',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.notifications_outlined, size: 20),
+              selectedIcon: Icon(Icons.notifications, size: 20),
+              label: '',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline, size: 20),
+              selectedIcon: Icon(Icons.person, size: 20),
+              label: '',
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

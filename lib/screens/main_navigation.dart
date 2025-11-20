@@ -87,54 +87,59 @@ class _MainNavigationState extends State<MainNavigation> {
         index: _currentIndex,
         children: _screens,
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) {
-          // Dismiss keyboard before navigation
-          FocusScope.of(context).unfocus();
-          setState(() => _currentIndex = index);
-          // Refresh unread count when navigating to notifications
-          if (index == 3) {
-            _loadUnreadCount();
-          }
-        },
-        destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: '',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.search_outlined),
-            selectedIcon: Icon(Icons.search),
-            label: '',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.auto_awesome_outlined),
-            selectedIcon: Icon(Icons.auto_awesome),
-            label: '',
-          ),
-          NavigationDestination(
-            icon: _unreadCount > 0
-                ? Badge(
-                    label: Text(_formatUnreadCount(_unreadCount)),
-                    child: const Icon(Icons.notifications_outlined),
-                  )
-                : const Icon(Icons.notifications_outlined),
-            selectedIcon: _unreadCount > 0
-                ? Badge(
-                    label: Text(_formatUnreadCount(_unreadCount)),
-                    child: const Icon(Icons.notifications),
-                  )
-                : const Icon(Icons.notifications),
-            label: '',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: '',
-          ),
-        ],
+      bottomNavigationBar: SizedBox(
+        height: 60,
+        child: NavigationBar(
+          selectedIndex: _currentIndex,
+          onDestinationSelected: (index) {
+            // Dismiss keyboard before navigation
+            FocusScope.of(context).unfocus();
+            setState(() => _currentIndex = index);
+            // Refresh unread count when navigating to notifications
+            if (index == 3) {
+              _loadUnreadCount();
+            }
+          },
+          height: 60,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+          destinations: [
+            NavigationDestination(
+              icon: Icon(Icons.home_outlined, size: 20),
+              selectedIcon: Icon(Icons.home, size: 20),
+              label: '',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.search_outlined, size: 20),
+              selectedIcon: Icon(Icons.search, size: 20),
+              label: '',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.auto_awesome_outlined, size: 20),
+              selectedIcon: Icon(Icons.auto_awesome, size: 20),
+              label: '',
+            ),
+            NavigationDestination(
+              icon: _unreadCount > 0
+                  ? Badge(
+                      label: Text(_formatUnreadCount(_unreadCount), style: TextStyle(fontSize: 10)),
+                      child: Icon(Icons.notifications_outlined, size: 20),
+                    )
+                  : Icon(Icons.notifications_outlined, size: 20),
+              selectedIcon: _unreadCount > 0
+                  ? Badge(
+                      label: Text(_formatUnreadCount(_unreadCount), style: TextStyle(fontSize: 10)),
+                      child: Icon(Icons.notifications, size: 20),
+                    )
+                  : Icon(Icons.notifications, size: 20),
+              label: '',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline, size: 20),
+              selectedIcon: Icon(Icons.person, size: 20),
+              label: '',
+            ),
+          ],
+        ),
       ),
       floatingActionButton: _currentIndex == 1 || _currentIndex == 2 || _currentIndex == 3 || _currentIndex == 4
           ? null

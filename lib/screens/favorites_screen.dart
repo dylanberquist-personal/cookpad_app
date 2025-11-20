@@ -55,62 +55,67 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       appBar: AppBar(
         title: const Text('Favorites'),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 4, // Profile tab
-        onDestinationSelected: (index) {
-          // Dismiss keyboard before navigation
-          FocusScope.of(context).unfocus();
-          
-          // Always navigate to profile screen when clicking profile icon
-          if (index == 4) {
+      bottomNavigationBar: SizedBox(
+        height: 60,
+        child: NavigationBar(
+          selectedIndex: 4, // Profile tab
+          onDestinationSelected: (index) {
+            // Dismiss keyboard before navigation
+            FocusScope.of(context).unfocus();
+            
+            // Always navigate to profile screen when clicking profile icon
+            if (index == 4) {
+              if (mounted) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(
+                    builder: (context) => MainNavigation(initialIndex: 4),
+                  ),
+                  (route) => false,
+                );
+              }
+              return;
+            }
+            
             if (mounted) {
+              // Navigate back to main navigation with the selected index
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(
-                  builder: (context) => MainNavigation(initialIndex: 4),
+                  builder: (context) => MainNavigation(initialIndex: index),
                 ),
                 (route) => false,
               );
             }
-            return;
-          }
-          
-          if (mounted) {
-            // Navigate back to main navigation with the selected index
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(
-                builder: (context) => MainNavigation(initialIndex: index),
-              ),
-              (route) => false,
-            );
-          }
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: '',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.search_outlined),
-            selectedIcon: Icon(Icons.search),
-            label: '',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.auto_awesome_outlined),
-            selectedIcon: Icon(Icons.auto_awesome),
-            label: '',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.notifications_outlined),
-            selectedIcon: Icon(Icons.notifications),
-            label: '',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: '',
-          ),
-        ],
+          },
+          height: 60,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.home_outlined, size: 20),
+              selectedIcon: Icon(Icons.home, size: 20),
+              label: '',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.search_outlined, size: 20),
+              selectedIcon: Icon(Icons.search, size: 20),
+              label: '',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.auto_awesome_outlined, size: 20),
+              selectedIcon: Icon(Icons.auto_awesome, size: 20),
+              label: '',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.notifications_outlined, size: 20),
+              selectedIcon: Icon(Icons.notifications, size: 20),
+              label: '',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline, size: 20),
+              selectedIcon: Icon(Icons.person, size: 20),
+              label: '',
+            ),
+          ],
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

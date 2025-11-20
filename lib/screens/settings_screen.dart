@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/preferences_service.dart';
 import '../services/auth_service.dart';
 import '../main.dart';
+import '../widgets/notification_badge_icon.dart';
 import 'auth/login_screen.dart';
 import 'main_navigation.dart';
 
@@ -286,8 +287,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               label: '',
             ),
             NavigationDestination(
-              icon: Icon(Icons.notifications_outlined, size: 20),
-              selectedIcon: Icon(Icons.notifications, size: 20),
+              icon: NotificationBadgeIcon(isSelected: false),
+              selectedIcon: NotificationBadgeIcon(isSelected: true),
               label: '',
             ),
             NavigationDestination(

@@ -14,6 +14,7 @@ import '../models/collection_model.dart';
 import '../models/badge_model.dart';
 import '../config/supabase_config.dart';
 import '../widgets/creator_profile_card.dart';
+import '../widgets/notification_badge_icon.dart';
 import 'main_navigation.dart';
 import 'recipe_detail_screen_new.dart';
 import 'collection_detail_screen.dart';
@@ -627,8 +628,8 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
               label: '',
             ),
             NavigationDestination(
-              icon: Icon(Icons.notifications_outlined, size: 20),
-              selectedIcon: Icon(Icons.notifications, size: 20),
+              icon: NotificationBadgeIcon(isSelected: false),
+              selectedIcon: NotificationBadgeIcon(isSelected: true),
               label: '',
             ),
             NavigationDestination(

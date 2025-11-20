@@ -4,6 +4,7 @@ import '../models/shopping_list_model.dart';
 import '../models/collection_model.dart';
 import '../services/collection_service.dart';
 import '../config/supabase_config.dart';
+import '../widgets/notification_badge_icon.dart';
 import 'shopping_list_detail_screen.dart';
 import 'main_navigation.dart';
 
@@ -406,8 +407,8 @@ class _ShoppingListsScreenState extends State<ShoppingListsScreen> {
               label: '',
             ),
             NavigationDestination(
-              icon: Icon(Icons.notifications_outlined, size: 20),
-              selectedIcon: Icon(Icons.notifications, size: 20),
+              icon: NotificationBadgeIcon(isSelected: false),
+              selectedIcon: NotificationBadgeIcon(isSelected: true),
               label: '',
             ),
             NavigationDestination(

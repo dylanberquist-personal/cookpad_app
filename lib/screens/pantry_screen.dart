@@ -6,6 +6,7 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import '../services/pantry_service.dart';
 import '../services/preferences_service.dart';
 import '../models/pantry_item_model.dart';
+import '../widgets/notification_badge_icon.dart';
 import 'main_navigation.dart';
 
 class PantryScreen extends StatefulWidget {
@@ -912,8 +913,8 @@ class _PantryScreenState extends State<PantryScreen> {
               label: '',
             ),
             NavigationDestination(
-              icon: Icon(Icons.notifications_outlined, size: 20),
-              selectedIcon: Icon(Icons.notifications, size: 20),
+              icon: NotificationBadgeIcon(isSelected: false),
+              selectedIcon: NotificationBadgeIcon(isSelected: true),
               label: '',
             ),
             NavigationDestination(

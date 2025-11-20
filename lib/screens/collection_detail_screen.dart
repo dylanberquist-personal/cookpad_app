@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/collection_model.dart';
 import '../models/recipe_model.dart';
 import '../services/collection_service.dart';
+import '../widgets/notification_badge_icon.dart';
 import 'recipe_detail_screen_new.dart';
 import 'edit_collection_screen.dart';
 import 'main_navigation.dart';
@@ -283,8 +284,8 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
               label: '',
             ),
             NavigationDestination(
-              icon: Icon(Icons.notifications_outlined, size: 20),
-              selectedIcon: Icon(Icons.notifications, size: 20),
+              icon: NotificationBadgeIcon(isSelected: false),
+              selectedIcon: NotificationBadgeIcon(isSelected: true),
               label: '',
             ),
             NavigationDestination(

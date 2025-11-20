@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/collection_service.dart';
 import '../models/collection_model.dart';
 import '../config/supabase_config.dart';
+import '../widgets/notification_badge_icon.dart';
 import 'collection_detail_screen.dart';
 import 'edit_collection_screen.dart';
 import 'main_navigation.dart';
@@ -186,8 +187,8 @@ class _CollectionsScreenState extends State<CollectionsScreen> {
               label: '',
             ),
             NavigationDestination(
-              icon: Icon(Icons.notifications_outlined, size: 20),
-              selectedIcon: Icon(Icons.notifications, size: 20),
+              icon: NotificationBadgeIcon(isSelected: false),
+              selectedIcon: NotificationBadgeIcon(isSelected: true),
               label: '',
             ),
             NavigationDestination(

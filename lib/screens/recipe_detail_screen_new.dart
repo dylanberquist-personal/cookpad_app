@@ -14,6 +14,7 @@ import '../services/comment_service.dart';
 import '../models/comment_model.dart';
 import '../models/collection_model.dart';
 import '../widgets/creator_profile_card.dart';
+import '../widgets/notification_badge_icon.dart';
 import 'main_navigation.dart';
 
 class RecipeDetailScreenNew extends StatefulWidget {
@@ -1129,8 +1130,8 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
               label: '',
             ),
             NavigationDestination(
-              icon: Icon(Icons.notifications_outlined, size: 20),
-              selectedIcon: Icon(Icons.notifications, size: 20),
+              icon: NotificationBadgeIcon(isSelected: false),
+              selectedIcon: NotificationBadgeIcon(isSelected: true),
               label: '',
             ),
             NavigationDestination(

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cookpad Email Confirmed</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+        background: linear-gradient(160deg, #ffedd6 0%, #fff7f0 40%, #ffffff 100%);
+        color: #3d3024;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 16px;
+      }
+
+      .card {
+        position: relative;
+        width: min(480px, 100%);
+        background: rgba(255, 255, 255, 0.98);
+        border-radius: 24px;
+        padding: 48px 36px;
+        text-align: center;
+        box-shadow: 0 18px 45px rgba(255, 122, 26, 0.18);
+        border: 1px solid rgba(255, 170, 102, 0.35);
+      }
+
+      .logo {
+        height: 64px;
+        margin-bottom: 28px;
+      }
+
+      h1 {
+        font-size: clamp(28px, 4vw, 36px);
+        margin: 0 0 16px;
+        letter-spacing: -0.02em;
+      }
+
+      p {
+        margin: 0 0 20px;
+        font-size: 16px;
+        line-height: 1.6;
+        color: #5f4b3f;
+      }
+
+      .cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 14px 24px;
+        border-radius: 999px;
+        font-weight: 600;
+        text-decoration: none;
+        color: #ffffff;
+        background: linear-gradient(135deg, #ff9f1c, #ff7a1a);
+        box-shadow: 0 10px 24px rgba(255, 122, 26, 0.25);
+        margin-top: 16px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .cta:hover,
+      .cta:focus-visible {
+        transform: translateY(-2px);
+        box-shadow: 0 14px 28px rgba(255, 122, 26, 0.35);
+      }
+
+      .cta span {
+        font-size: 15px;
+      }
+
+      .note {
+        margin-top: 28px;
+        padding: 14px 18px;
+        border-radius: 16px;
+        background-color: rgba(255, 236, 213, 0.7);
+        border: 1px dashed rgba(255, 170, 102, 0.6);
+        font-size: 14px;
+      }
+
+      footer {
+        margin-top: 32px;
+        font-size: 13px;
+        color: rgba(93, 68, 50, 0.7);
+      }
+
+      .confetti {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        overflow: hidden;
+      }
+
+      .confetti span {
+        position: absolute;
+        width: 10px;
+        height: 16px;
+        border-radius: 6px;
+        opacity: 0.7;
+        animation: float 9s linear infinite;
+      }
+
+      @keyframes float {
+        0% {
+          transform: translateY(120%) rotate(0deg);
+        }
+        100% {
+          transform: translateY(-120%) rotate(360deg);
+        }
+      }
+
+      @media (max-width: 480px) {
+        .card {
+          padding: 40px 24px;
+          border-radius: 20px;
+        }
+
+        .logo {
+          height: 56px;
+        }
+
+        .note {
+          margin-top: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="confetti" aria-hidden="true">
+        <span style="left: 5%; background-color: #ffb347; animation-delay: 0s;"></span>
+        <span style="left: 18%; background-color: #ff8360; animation-delay: 1.2s;"></span>
+        <span style="left: 32%; background-color: #ffdecf; animation-delay: 0.6s;"></span>
+        <span style="left: 48%; background-color: #ff9f1c; animation-delay: 2s;"></span>
+        <span style="left: 62%; background-color: #ff8360; animation-delay: 1.6s;"></span>
+        <span style="left: 78%; background-color: #ffb347; animation-delay: 0.9s;"></span>
+        <span style="left: 90%; background-color: #ffdecf; animation-delay: 1.4s;"></span>
+      </div>
+      <img
+        class="logo"
+        src="https://YOUR_STORAGE_BUCKET_URL/Logo_with_text.png"
+        alt="Cookpad Logo"
+        width="240"
+        height="auto"
+      />
+      <h1>You’re all set!</h1>
+      <p>Your email has been confirmed. You can close this tab and jump back into the app.</p>
+      <a class="cta" href="cookpad://home">
+        <span>Open Cookpad App</span>
+      </a>
+      <div class="note">
+        Back on your phone? Just return to the Cookpad app—it should update automatically. If you run into any trouble, try signing out and back in.
+      </div>
+      <footer>&copy; <span id="year"></span> Cookpad. All rights reserved.</footer>
+    </div>
+    <script>
+      document.getElementById('year').textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>
+

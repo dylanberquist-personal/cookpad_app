@@ -679,6 +679,8 @@ class _PantryScreenState extends State<PantryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     if (_isLoading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -715,9 +717,13 @@ class _PantryScreenState extends State<PantryScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _isEnabled ? Colors.green.shade50 : Colors.grey.shade100,
+              color: isDark
+                  ? (_isEnabled ? Colors.green.shade900.withOpacity(0.3) : Colors.grey.shade800)
+                  : (_isEnabled ? Colors.green.shade50 : Colors.grey.shade100),
               border: Border(
-                bottom: BorderSide(color: Colors.grey.shade300),
+                bottom: BorderSide(
+                  color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                ),
               ),
             ),
             child: Row(
@@ -731,7 +737,9 @@ class _PantryScreenState extends State<PantryScreen> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: _isEnabled ? Colors.green.shade700 : Colors.grey.shade700,
+                          color: isDark
+                              ? (_isEnabled ? Colors.green.shade300 : Colors.grey.shade400)
+                              : (_isEnabled ? Colors.green.shade700 : Colors.grey.shade700),
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -741,7 +749,7 @@ class _PantryScreenState extends State<PantryScreen> {
                             : 'Enable to track your ingredients',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.grey.shade600,
+                          color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                         ),
                       ),
                     ],
@@ -765,14 +773,14 @@ class _PantryScreenState extends State<PantryScreen> {
                           Icon(
                             Icons.kitchen,
                             size: 64,
-                            color: Colors.grey.shade400,
+                            color: isDark ? Colors.grey.shade600 : Colors.grey.shade400,
                           ),
                           const SizedBox(height: 16),
                           Text(
                             'Your pantry is empty',
                             style: TextStyle(
                               fontSize: 18,
-                              color: Colors.grey.shade600,
+                              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -780,7 +788,7 @@ class _PantryScreenState extends State<PantryScreen> {
                             'Add items manually or import from text/image',
                             style: TextStyle(
                               fontSize: 14,
-                              color: Colors.grey.shade500,
+                              color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
                             ),
                           ),
                         ],
@@ -831,7 +839,7 @@ class _PantryScreenState extends State<PantryScreen> {
                               separatorBuilder: (context, index) => Divider(
                                 height: 1,
                                 thickness: 1,
-                                color: Colors.grey.shade200,
+                                color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
                                 indent: 16,
                                 endIndent: 16,
                               ),
@@ -928,6 +936,8 @@ class _CategoryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -935,13 +945,13 @@ class _CategoryChip extends StatelessWidget {
         margin: const EdgeInsets.only(right: 8),
         decoration: BoxDecoration(
           color: isSelected 
-              ? Theme.of(context).primaryColor.withOpacity(0.1)
+              ? Theme.of(context).primaryColor.withOpacity(isDark ? 0.2 : 0.1)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected 
                 ? Theme.of(context).primaryColor
-                : Colors.grey.shade300,
+                : (isDark ? Colors.grey.shade600 : Colors.grey.shade300),
             width: isSelected ? 1.5 : 1,
           ),
         ),
@@ -952,7 +962,7 @@ class _CategoryChip extends StatelessWidget {
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
             color: isSelected 
                 ? Theme.of(context).primaryColor
-                : Colors.grey.shade700,
+                : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
           ),
         ),
       ),
@@ -973,6 +983,8 @@ class _PantryItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return InkWell(
       onTap: onEdit,
       child: Padding(
@@ -998,10 +1010,10 @@ class _PantryItemTile extends StatelessWidget {
                 children: [
                   Text(
                     item.ingredientName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: Colors.black87,
+                      color: isDark ? Colors.grey[200] : Colors.black87,
                     ),
                   ),
                   if (item.quantity != null || item.category != null) ...[
@@ -1015,7 +1027,7 @@ class _PantryItemTile extends StatelessWidget {
                             item.quantity!,
                             style: TextStyle(
                               fontSize: 11,
-                              color: Colors.grey.shade600,
+                              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                             ),
                           ),
                         if (item.category != null) ...[
@@ -1025,7 +1037,7 @@ class _PantryItemTile extends StatelessWidget {
                               height: 2,
                               margin: const EdgeInsets.symmetric(horizontal: 2),
                               decoration: BoxDecoration(
-                                color: Colors.grey.shade400,
+                                color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -1033,7 +1045,7 @@ class _PantryItemTile extends StatelessWidget {
                             item.category!,
                             style: TextStyle(
                               fontSize: 10,
-                              color: Colors.grey.shade600,
+                              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                               fontWeight: FontWeight.w400,
                             ),
                           ),
@@ -1049,7 +1061,7 @@ class _PantryItemTile extends StatelessWidget {
               icon: Icon(
                 Icons.more_vert,
                 size: 18,
-                color: Colors.grey.shade600,
+                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
               ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),

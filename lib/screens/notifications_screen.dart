@@ -270,6 +270,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       final isUnread = !notification.isRead;
                       final notificationColor = _getNotificationColor(notification.type);
 
+                      final isDark = Theme.of(context).brightness == Brightness.dark;
+                      
                       return InkWell(
                         onTap: () => _handleNotificationTap(notification),
                         child: Container(
@@ -279,11 +281,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           ),
                           decoration: BoxDecoration(
                             color: isUnread
-                                ? notificationColor.withOpacity(0.05)
+                                ? notificationColor.withOpacity(isDark ? 0.15 : 0.05)
                                 : null,
                             border: Border(
                               bottom: BorderSide(
-                                color: Colors.grey[200]!,
+                                color: isDark ? Colors.grey[700]! : Colors.grey[200]!,
                                 width: 0.5,
                               ),
                             ),
@@ -331,11 +333,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                                       return Container(
                                                         width: 20,
                                                         height: 20,
-                                                        color: Colors.grey[300],
+                                                        color: isDark ? Colors.grey[700] : Colors.grey[300],
                                                         child: Icon(
                                                           Icons.person,
                                                           size: 12,
-                                                          color: Colors.grey[600],
+                                                          color: isDark ? Colors.grey[300] : Colors.grey[600],
                                                         ),
                                                       );
                                                     },
@@ -343,20 +345,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                                 : Container(
                                                     width: 20,
                                                     height: 20,
-                                                    color: Colors.grey[300],
+                                                    color: isDark ? Colors.grey[700] : Colors.grey[300],
                                                     child: Icon(
                                                       Icons.person,
                                                       size: 12,
-                                                      color: Colors.grey[600],
+                                                      color: isDark ? Colors.grey[300] : Colors.grey[600],
                                                     ),
                                                   ),
                                           ),
                                           const SizedBox(width: 6),
                                           Text(
                                             notification.actor!.username,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 14,
+                                              color: isDark ? Colors.white : Colors.black87,
                                             ),
                                           ),
                                         ],
@@ -365,7 +368,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                           _formatTimestamp(notification.createdAt),
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: Colors.grey[600],
+                                            color: isDark ? Colors.grey[400] : Colors.grey[600],
                                           ),
                                         ),
                                       ],
@@ -379,7 +382,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                         fontWeight: isUnread
                                             ? FontWeight.w500
                                             : FontWeight.normal,
-                                        color: Colors.grey[800],
+                                        color: isDark ? Colors.grey[100] : Colors.grey[800],
                                       ),
                                     ),
                                     // Recipe title if available
@@ -389,7 +392,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                         notification.recipeTitle!,
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: Colors.grey[600],
+                                          color: isDark ? Colors.grey[400] : Colors.grey[600],
                                           fontStyle: FontStyle.italic,
                                         ),
                                         maxLines: 1,

@@ -6,7 +6,7 @@ import '../models/recipe_model.dart';
 import '../models/user_model.dart';
 import '../widgets/creator_profile_card.dart';
 import 'recipe_detail_screen_new.dart';
-import 'my_profile_detail_screen.dart';
+import 'favorites_screen.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -123,30 +123,56 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        title: Padding(
-          padding: const EdgeInsets.only(top: 13.0, bottom: 13.0),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.orange.withOpacity(0.2),
-                width: 2,
-              ),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        title: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.orange.shade400,
+                Colors.orange.shade600,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset(
-                'Assets/Logo_long.png',
-                height: 48,
-                fit: BoxFit.contain,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.orange.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.asset(
+              'Assets/Logo_long.png',
+              height: 32,
+              fit: BoxFit.contain,
             ),
           ),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(
+              Icons.favorite_border,
+              color: isDark ? Colors.white : Colors.grey[800],
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const FavoritesScreen()),
+              );
+            },
+            tooltip: 'Favorites',
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -193,6 +219,8 @@ class _FeedScreenState extends State<FeedScreen> {
     required IconData icon,
     Color? iconColor,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
       child: Row(
@@ -205,7 +233,9 @@ class _FeedScreenState extends State<FeedScreen> {
             ),
             child: Icon(
               icon,
-              color: iconColor ?? Theme.of(context).primaryColor,
+              color: isDark && iconColor == null 
+                  ? Colors.white 
+                  : (iconColor ?? Theme.of(context).primaryColor),
               size: 24,
             ),
           ),
@@ -318,13 +348,15 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   Widget _buildMealRecipesSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildSectionHeader(
           title: _getMealTypeName(),
           icon: _getMealTypeIcon(),
-          iconColor: Theme.of(context).primaryColor,
+          iconColor: isDark ? Colors.white : Theme.of(context).primaryColor,
         ),
         SizedBox(
           height: 200,

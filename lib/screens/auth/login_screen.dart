@@ -86,10 +86,26 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Image.asset(
-                    'Assets/Logo_with_text.png',
-                    height: 120,
-                    fit: BoxFit.contain,
+                  Center(
+                    child: IntrinsicWidth(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.orange.withOpacity(0.2),
+                            width: 2,
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.asset(
+                            'Assets/Logo_with_text.png',
+                            height: 120,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 48),
                   TextFormField(

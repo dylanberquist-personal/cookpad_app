@@ -8,6 +8,7 @@ import 'my_profile_detail_screen.dart';
 import 'favorites_screen.dart';
 import 'collections_screen.dart';
 import 'shopping_lists_screen.dart';
+import 'settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -93,8 +94,15 @@ class ProfileScreen extends StatelessWidget {
                 ListTile(
                   title: const Text('Settings'),
                   leading: const Icon(Icons.settings),
-                  onTap: () {
-                    // TODO: Navigate to settings
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SettingsScreen(),
+                      ),
+                    );
+                    // Theme changes will be applied when app resumes
+                    // The MyApp widget listens to lifecycle changes
                   },
                 ),
                 ListTile(

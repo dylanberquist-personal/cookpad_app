@@ -1398,15 +1398,20 @@ class _RecipeCardState extends State<_RecipeCard> {
       }
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Container(
       constraints: const BoxConstraints(maxWidth: 400),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? Colors.grey[800] : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange.withOpacity(0.3), width: 2),
+        border: Border.all(
+          color: isDark ? Colors.orange.withOpacity(0.5) : Colors.orange.withOpacity(0.3),
+          width: 2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withOpacity(isDark ? 0.3 : 0.1),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1419,7 +1424,9 @@ class _RecipeCardState extends State<_RecipeCard> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.1),
+              color: isDark 
+                  ? Colors.orange.withOpacity(0.2)
+                  : Colors.orange.withOpacity(0.1),
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16),
                 topRight: Radius.circular(16),
@@ -1435,11 +1442,11 @@ class _RecipeCardState extends State<_RecipeCard> {
                     Expanded(
                       child: Text(
                         title.isNotEmpty ? title : 'Recipe',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange,
-                        ),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.orange[300] : Colors.orange,
+                    ),
                       ),
                     ),
                   ],
@@ -1449,7 +1456,7 @@ class _RecipeCardState extends State<_RecipeCard> {
                   Text(
                     description,
                     style: TextStyle(
-                      color: Colors.grey[700],
+                      color: isDark ? Colors.grey[300] : Colors.grey[700],
                       fontSize: 14,
                     ),
                   ),
@@ -1492,11 +1499,12 @@ class _RecipeCardState extends State<_RecipeCard> {
                 // Ingredients
                 if (ingredients.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     'Ingredients',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1505,8 +1513,20 @@ class _RecipeCardState extends State<_RecipeCard> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('• ', style: TextStyle(color: Colors.orange)),
-                        Expanded(child: Text(ing)),
+                        Text(
+                          '• ',
+                          style: TextStyle(
+                            color: isDark ? Colors.orange[300] : Colors.orange,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            ing,
+                            style: TextStyle(
+                              color: isDark ? Colors.grey[200] : Colors.black87,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   )),
@@ -1526,7 +1546,7 @@ class _RecipeCardState extends State<_RecipeCard> {
                                   ? 'Show less'
                                   : '... and ${ingredients.length - 5} more',
                               style: TextStyle(
-                                color: Colors.orange,
+                                color: isDark ? Colors.orange[300] : Colors.orange,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -1536,7 +1556,7 @@ class _RecipeCardState extends State<_RecipeCard> {
                                   ? Icons.expand_less
                                   : Icons.expand_more,
                               size: 16,
-                              color: Colors.orange,
+                              color: isDark ? Colors.orange[300] : Colors.orange,
                             ),
                           ],
                         ),
@@ -1547,11 +1567,12 @@ class _RecipeCardState extends State<_RecipeCard> {
                 // Instructions preview
                 if (instructions.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     'Instructions',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1565,8 +1586,8 @@ class _RecipeCardState extends State<_RecipeCard> {
                         children: [
                           Text(
                             '${index + 1}. ',
-                            style: const TextStyle(
-                              color: Colors.orange,
+                            style: TextStyle(
+                              color: isDark ? Colors.orange[300] : Colors.orange,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -1577,6 +1598,9 @@ class _RecipeCardState extends State<_RecipeCard> {
                                   : (inst.length > 100
                                       ? '${inst.substring(0, 100)}...'
                                       : inst),
+                              style: TextStyle(
+                                color: isDark ? Colors.grey[200] : Colors.black87,
+                              ),
                             ),
                           ),
                         ],
@@ -1707,22 +1731,30 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.1),
+        color: isDark
+            ? Colors.orange.withOpacity(0.2)
+            : Colors.orange.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.orange),
+          Icon(
+            icon,
+            size: 14,
+            color: isDark ? Colors.orange[300] : Colors.orange,
+          ),
           const SizedBox(width: 4),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: Colors.orange,
+              color: isDark ? Colors.orange[300] : Colors.orange,
               fontWeight: FontWeight.w500,
             ),
           ),

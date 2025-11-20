@@ -496,15 +496,20 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
       );
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: isDark ? Colors.grey[900] : Colors.grey[50],
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+        foregroundColor: isDark ? Colors.white : Colors.black,
         title: Text(
           _userProfile!.displayName ?? _userProfile!.username,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.black,
+          ),
         ),
         actions: _isOwner
             ? [
@@ -708,7 +713,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                   Text(
                     '@${_userProfile!.username}',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
                         ),
                   ),
                   const SizedBox(height: 24),
@@ -793,12 +798,13 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.person, size: 20, color: Colors.grey[600]),
+                                Icon(Icons.person, size: 20, color: isDark ? Colors.grey[400] : Colors.grey[600]),
                                 const SizedBox(width: 8),
                                 Text(
                                   'About',
                                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                         fontWeight: FontWeight.bold,
+                                        color: isDark ? Colors.white : Colors.black87,
                                       ),
                                 ),
                               ],
@@ -814,12 +820,14 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       filled: true,
-                                      fillColor: Colors.grey[50],
+                                      fillColor: isDark ? Colors.grey[800] : Colors.grey[50],
                                     ),
                                   )
                                 : Text(
                                     _userProfile!.bio ?? '',
-                                    style: Theme.of(context).textTheme.bodyLarge,
+                                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                          color: isDark ? Colors.grey[200] : Colors.black87,
+                                        ),
                                   ),
                           ],
                         ),
@@ -842,12 +850,13 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.school, size: 20, color: Colors.grey[600]),
+                              Icon(Icons.school, size: 20, color: isDark ? Colors.grey[400] : Colors.grey[600]),
                               const SizedBox(width: 8),
                               Text(
                                 'Skill Level',
                                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                       fontWeight: FontWeight.bold,
+                                      color: isDark ? Colors.white : Colors.black87,
                                     ),
                               ),
                             ],
@@ -875,12 +884,13 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.restaurant_menu, size: 20, color: Colors.grey[600]),
+                              Icon(Icons.restaurant_menu, size: 20, color: isDark ? Colors.grey[400] : Colors.grey[600]),
                               const SizedBox(width: 8),
                               Text(
                                 'Dietary Restrictions',
                                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                       fontWeight: FontWeight.bold,
+                                      color: isDark ? Colors.white : Colors.black87,
                                     ),
                               ),
                             ],
@@ -989,12 +999,17 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.restaurant_menu, size: 24, color: Theme.of(context).primaryColor),
+                        Icon(
+                          Icons.restaurant_menu,
+                          size: 24,
+                          color: isDark ? Colors.white : Theme.of(context).primaryColor,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           'Public Recipes',
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black87,
                               ),
                         ),
                       ],
@@ -1041,12 +1056,17 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.folder, size: 24, color: Theme.of(context).primaryColor),
+                        Icon(
+                          Icons.folder,
+                          size: 24,
+                          color: isDark ? Colors.white : Theme.of(context).primaryColor,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           'Public Collections',
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black87,
                               ),
                         ),
                       ],
@@ -1092,11 +1112,15 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
   }
 
   Widget _buildStatColumn(String label, String value, IconData icon, {bool isHighlight = false, VoidCallback? onTap}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     final column = Column(
       children: [
         Icon(
           icon,
-          color: isHighlight ? Colors.amber : Theme.of(context).primaryColor,
+          color: isHighlight 
+              ? Colors.amber 
+              : (isDark ? Colors.white : Theme.of(context).primaryColor),
           size: 24,
         ),
         const SizedBox(height: 8),

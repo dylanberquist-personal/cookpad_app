@@ -248,6 +248,12 @@ This creates `build/app/outputs/bundle/release/app-release.aab` which you can up
 - The app uses Supabase for backend (database, auth, storage)
 - OpenAI GPT-4 Turbo for AI recipe generation
 - All models match the PRD schema specifications
+
+### Email Confirmation Branding
+
+- Custom Supabase confirmation email HTML lives in `supabase/email_templates/confirm_signup.html`
+- Static confirmation landing page lives in `web/email-confirmed.html`
+- Follow `docs/email_confirmation_setup.md` for deployment and configuration steps
 - The codebase follows Flutter best practices and Material Design 3
 
 ## 🔒 Security

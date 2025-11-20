@@ -32,6 +32,8 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
   bool _hidePantryItems = false;
   List<String> _pantryItemNames = [];
   final _itemNameController = TextEditingController();
+  String? _editingItemId;
+  final Map<String, TextEditingController> _editControllers = {};
 
   @override
   void initState() {
@@ -42,6 +44,9 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
   @override
   void dispose() {
     _itemNameController.dispose();
+    for (final controller in _editControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -91,7 +96,7 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
         itemName: itemName,
       );
       
-      // Update locally without full refresh
+      // Update locally without full refresh - add new item at the top
       setState(() {
         _shoppingList = ShoppingListModel(
           id: _shoppingList!.id,
@@ -99,7 +104,7 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
           name: _shoppingList!.name,
           createdAt: _shoppingList!.createdAt,
           updatedAt: DateTime.now(),
-          items: [..._shoppingList!.items, newItem],
+          items: [newItem, ..._shoppingList!.items],
         );
       });
       
@@ -163,6 +168,129 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
     }
   }
 
+  void _startEditingItem(ShoppingListItemModel item) {
+    setState(() {
+      _editingItemId = item.id;
+      // Create a controller with the current item name if it doesn't exist
+      if (!_editControllers.containsKey(item.id)) {
+        _editControllers[item.id] = TextEditingController(text: item.itemName);
+      }
+    });
+  }
+
+  Future<void> _saveEditingItem(ShoppingListItemModel item) async {
+    final controller = _editControllers[item.id];
+    if (controller == null) return;
+
+    final newName = controller.text.trim();
+    if (newName.isEmpty) {
+      // If empty, don't save and just cancel editing
+      setState(() {
+        _editingItemId = null;
+      });
+      return;
+    }
+
+    if (newName == item.itemName) {
+      // No change, just cancel editing
+      setState(() {
+        _editingItemId = null;
+      });
+      return;
+    }
+
+    try {
+      final updatedItem = await _shoppingListService.updateItem(
+        id: item.id,
+        itemName: newName,
+      );
+
+      // Update locally without full refresh
+      setState(() {
+        _shoppingList = ShoppingListModel(
+          id: _shoppingList!.id,
+          userId: _shoppingList!.userId,
+          name: _shoppingList!.name,
+          createdAt: _shoppingList!.createdAt,
+          updatedAt: DateTime.now(),
+          items: _shoppingList!.items.map((i) => 
+            i.id == item.id ? updatedItem : i
+          ).toList(),
+        );
+        _editingItemId = null;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating item: $e')),
+        );
+      }
+      setState(() {
+        _editingItemId = null;
+      });
+    }
+  }
+
+  void _cancelEditingItem() {
+    setState(() {
+      _editingItemId = null;
+    });
+  }
+
+  Future<void> _moveCheckedItemsToPantry() async {
+    final checkedItems = _shoppingList!.items.where((item) => item.isChecked).toList();
+    
+    if (checkedItems.isEmpty) return;
+
+    try {
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      // Add items to pantry
+      final itemNames = checkedItems.map((item) => item.itemName).toList();
+      await _pantryService.addPantryItems(itemNames);
+
+      // Delete items from shopping list
+      for (final item in checkedItems) {
+        await _shoppingListService.deleteItem(item.id);
+      }
+
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        
+        // Update locally without full refresh
+        setState(() {
+          _shoppingList = ShoppingListModel(
+            id: _shoppingList!.id,
+            userId: _shoppingList!.userId,
+            name: _shoppingList!.name,
+            createdAt: _shoppingList!.createdAt,
+            updatedAt: DateTime.now(),
+            items: _shoppingList!.items.where((i) => !i.isChecked).toList(),
+          );
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Moved ${checkedItems.length} item${checkedItems.length == 1 ? '' : 's'} to pantry'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error moving items to pantry: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _importFromText() async {
     final textController = TextEditingController();
     final result = await showDialog<String>(
@@ -205,7 +333,7 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
           itemNames: lines,
         );
 
-        // Update locally without full refresh
+        // Update locally without full refresh - add new items at the top
         setState(() {
           _shoppingList = ShoppingListModel(
             id: _shoppingList!.id,
@@ -213,7 +341,7 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
             name: _shoppingList!.name,
             createdAt: _shoppingList!.createdAt,
             updatedAt: DateTime.now(),
-            items: [..._shoppingList!.items, ...items],
+            items: [...items, ..._shoppingList!.items],
           );
         });
       } catch (e) {
@@ -305,7 +433,7 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
             if (mounted) {
               Navigator.pop(context); // Close loading dialog
               
-              // Update locally without full refresh
+              // Update locally without full refresh - add new items at the top
               setState(() {
                 _shoppingList = ShoppingListModel(
                   id: _shoppingList!.id,
@@ -313,7 +441,7 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
                   name: _shoppingList!.name,
                   createdAt: _shoppingList!.createdAt,
                   updatedAt: DateTime.now(),
-                  items: [..._shoppingList!.items, ...items],
+                  items: [...items, ..._shoppingList!.items],
                 );
               });
             }
@@ -542,6 +670,8 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
                             itemCount: displayItems.length,
                             itemBuilder: (context, index) {
                               final item = displayItems[index];
+                              final isEditing = _editingItemId == item.id;
+                              
                               return Dismissible(
                                 key: Key(item.id),
                                 direction: DismissDirection.endToStart,
@@ -552,23 +682,67 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
                                   child: const Icon(Icons.delete, color: Colors.white),
                                 ),
                                 onDismissed: (direction) => _deleteItem(item),
-                                child: CheckboxListTile(
-                                  value: item.isChecked,
-                                  onChanged: (_) => _toggleItemChecked(item),
-                                  title: Text(
-                                    item.itemName,
-                                    style: TextStyle(
-                                      decoration: item.isChecked
-                                          ? TextDecoration.lineThrough
-                                          : null,
-                                      color: item.isChecked
-                                          ? Colors.grey
-                                          : null,
-                                    ),
-                                  ),
-                                  subtitle: item.quantity != null
-                                      ? Text(item.quantity!)
-                                      : null,
+                                child: GestureDetector(
+                                  onLongPress: () => _startEditingItem(item),
+                                  child: isEditing
+                                      ? ListTile(
+                                          leading: Checkbox(
+                                            value: item.isChecked,
+                                            onChanged: (_) => _toggleItemChecked(item),
+                                          ),
+                                          title: TextField(
+                                            controller: _editControllers[item.id],
+                                            autofocus: true,
+                                            decoration: InputDecoration(
+                                              hintText: 'Item name',
+                                              border: OutlineInputBorder(),
+                                              contentPadding: const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 8,
+                                              ),
+                                              suffixIcon: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  IconButton(
+                                                    icon: const Icon(Icons.check, color: Colors.green),
+                                                    onPressed: () => _saveEditingItem(item),
+                                                    tooltip: 'Save',
+                                                  ),
+                                                  IconButton(
+                                                    icon: const Icon(Icons.close, color: Colors.red),
+                                                    onPressed: _cancelEditingItem,
+                                                    tooltip: 'Cancel',
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            onSubmitted: (_) => _saveEditingItem(item),
+                                          ),
+                                          subtitle: item.quantity != null
+                                              ? Padding(
+                                                  padding: const EdgeInsets.only(top: 8.0),
+                                                  child: Text(item.quantity!),
+                                                )
+                                              : null,
+                                        )
+                                      : CheckboxListTile(
+                                          value: item.isChecked,
+                                          onChanged: (_) => _toggleItemChecked(item),
+                                          title: Text(
+                                            item.itemName,
+                                            style: TextStyle(
+                                              decoration: item.isChecked
+                                                  ? TextDecoration.lineThrough
+                                                  : null,
+                                              color: item.isChecked
+                                                  ? Colors.grey
+                                                  : null,
+                                            ),
+                                          ),
+                                          subtitle: item.quantity != null
+                                              ? Text(item.quantity!)
+                                              : null,
+                                        ),
                                 ),
                               );
                             },
@@ -635,6 +809,17 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
           ],
         ),
       ),
+      floatingActionButton: (_shoppingList != null && 
+          _shoppingList!.items.any((item) => item.isChecked) &&
+          _pantryEnabled)
+          ? FloatingActionButton.extended(
+              onPressed: _moveCheckedItemsToPantry,
+              icon: const Icon(Icons.kitchen),
+              label: const Text('Move to Pantry'),
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            )
+          : null,
     );
   }
 }

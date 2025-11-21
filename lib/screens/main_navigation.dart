@@ -13,8 +13,9 @@ import '../config/supabase_config.dart';
 class MainNavigation extends StatefulWidget {
   final int initialIndex;
   final RecipeModel? remixRecipe;
+  final bool isFromLogin;
   
-  const MainNavigation({super.key, this.initialIndex = 0, this.remixRecipe});
+  const MainNavigation({super.key, this.initialIndex = 0, this.remixRecipe, this.isFromLogin = false});
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
@@ -39,6 +40,12 @@ class _MainNavigationState extends State<MainNavigation> {
     _loadUnreadCount();
     // Refresh unread count periodically
     _startPeriodicRefresh();
+    
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   void _startPeriodicRefresh() {

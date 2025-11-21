@@ -362,7 +362,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
         displayName: _displayNameController.text.isEmpty 
             ? null 
             : _displayNameController.text,
-        bio: _bioController.text.isEmpty ? null : _bioController.text,
+        bio: _bioController.text.trim(), // Always pass the text, even if empty
         skillLevel: _selectedSkillLevel,
         dietaryRestrictions: _selectedDietaryRestrictions,
       );

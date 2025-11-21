@@ -110,8 +110,9 @@ class AuthService {
     if (user == null) throw Exception('User not authenticated');
 
     final updates = <String, dynamic>{};
-    if (displayName != null) updates['display_name'] = displayName;
-    if (bio != null) updates['bio'] = bio;
+    if (displayName != null) updates['display_name'] = displayName.isEmpty ? null : displayName;
+    // Always update bio if provided (even if empty string to clear it)
+    if (bio != null) updates['bio'] = bio.isEmpty ? null : bio;
     if (profilePictureUrl != null) updates['profile_picture_url'] = profilePictureUrl;
     if (skillLevel != null) updates['skill_level'] = skillLevel;
     if (dietaryRestrictions != null) updates['dietary_restrictions'] = dietaryRestrictions;

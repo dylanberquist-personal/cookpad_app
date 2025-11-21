@@ -6,6 +6,10 @@ class PreferencesService {
   static const String _themeModeKey = 'theme_mode';
   static const String _notificationsEnabledKey = 'notifications_enabled';
   static const String _dietaryHintSeenKey = 'dietary_hint_seen';
+  static const String _pantryHintSeenKey = 'pantry_hint_seen';
+  static const String _profileHintSeenKey = 'profile_hint_seen';
+  static const String _generateRecipeHintSeenKey = 'generate_recipe_hint_seen';
+  static const String _isFromLoginKey = 'is_from_login';
 
   /// Check if pantry feature is enabled
   Future<bool> isPantryEnabled() async {
@@ -119,6 +123,72 @@ class PreferencesService {
   Future<void> resetDietaryHint() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_dietaryHintSeenKey, false);
+  }
+
+  /// Check if pantry hint has been seen
+  Future<bool> hasSeenPantryHint() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_pantryHintSeenKey) ?? false;
+  }
+
+  /// Mark pantry hint as seen
+  Future<void> setPantryHintSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_pantryHintSeenKey, true);
+  }
+
+  /// Reset pantry hint (for testing)
+  Future<void> resetPantryHint() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_pantryHintSeenKey, false);
+  }
+
+  /// Check if profile hint has been seen
+  Future<bool> hasSeenProfileHint() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_profileHintSeenKey) ?? false;
+  }
+
+  /// Mark profile hint as seen
+  Future<void> setProfileHintSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_profileHintSeenKey, true);
+  }
+
+  /// Reset profile hint (for testing)
+  Future<void> resetProfileHint() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_profileHintSeenKey, false);
+  }
+
+  /// Check if generate recipe hint has been seen
+  Future<bool> hasSeenGenerateRecipeHint() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_generateRecipeHintSeenKey) ?? false;
+  }
+
+  /// Mark generate recipe hint as seen
+  Future<void> setGenerateRecipeHintSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_generateRecipeHintSeenKey, true);
+  }
+
+  /// Reset generate recipe hint (for testing)
+  Future<void> resetGenerateRecipeHint() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_generateRecipeHintSeenKey, false);
+  }
+
+  /// Check if user is coming from login
+  Future<bool> isFromLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_isFromLoginKey) ?? false;
+  }
+
+  /// Mark that user is coming from login
+  Future<void> setFromLogin(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_isFromLoginKey, value);
   }
 }
 

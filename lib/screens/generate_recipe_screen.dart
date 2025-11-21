@@ -59,7 +59,7 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
   bool _isInitialized = false; // Track if widget is initialized
   bool _considerDietaryRestrictions = false; // Track if dietary restrictions should be considered
   OverlayEntry? _dietaryHintOverlay; // Overlay for dietary hint bubble
-  bool _hasShownHintThisSession = false; // Track if hint was shown in this session
+  bool _hasShownDietaryHintThisSession = false; // Track if dietary hint was shown in this session
   bool _isScreenVisible = false; // Track if screen is currently visible
 
   @override
@@ -71,6 +71,9 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
     if (widget.initialImage != null) {
       _selectedImage = widget.initialImage;
     }
+    
+    // Mark screen as visible since it's being initialized
+    _isScreenVisible = true;
     
     _initializeData();
     
@@ -127,10 +130,10 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
     if (mounted) {
       setState(() {
         _isInitialized = true;
+        _isScreenVisible = true; // Mark as visible after initialization
       });
-      // Only check and show hint if screen is actually visible
-      final isCurrent = ModalRoute.of(context)?.isCurrent ?? false;
-      if (isCurrent && !_hasShownHintThisSession) {
+      // Check and show hints after initialization
+      if (!_hasShownDietaryHintThisSession) {
         await _checkAndShowDietaryHint();
       }
     }
@@ -159,6 +162,7 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
   @override
   void deactivate() {
     // Remove overlay when navigating away from this screen
+    _isScreenVisible = false;
     _removeDietaryHintOverlay();
     super.deactivate();
   }
@@ -167,30 +171,20 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
   void didChangeDependencies() {
     super.didChangeDependencies();
     
-    // Check if this screen is now visible
-    final isCurrent = ModalRoute.of(context)?.isCurrent ?? false;
-    
-    // If screen just became visible
-    if (isCurrent && !_isScreenVisible) {
+    // For IndexedStack, we need to check visibility differently
+    // The screen becomes visible when dependencies change and it's in the stack
+    if (!_isScreenVisible && _isInitialized && mounted) {
       _isScreenVisible = true;
       print('Generate Recipe screen became visible');
       
-      // Reload data when dependencies change (including route changes)
-      // Only reload if widget is initialized to avoid unnecessary calls
-      if (_isInitialized && mounted) {
-        _loadPantryStatus();
-        _loadUserProfile().then((_) {
-          // Only check for hint if we're still on this screen and haven't shown it yet
-          if (mounted && ModalRoute.of(context)?.isCurrent == true && !_hasShownHintThisSession) {
-            _checkAndShowDietaryHint();
-          }
-        });
-      }
-    } else if (!isCurrent && _isScreenVisible) {
-      // Screen is no longer visible
-      _isScreenVisible = false;
-      _removeDietaryHintOverlay();
-      print('Generate Recipe screen is no longer visible');
+      // Reload data and check for hints
+      _loadPantryStatus();
+      _loadUserProfile().then((_) {
+        // Only check for dietary hint if we're still on this screen and haven't shown it yet
+        if (mounted && _isScreenVisible && !_hasShownDietaryHintThisSession) {
+          _checkAndShowDietaryHint();
+        }
+      });
     }
   }
 
@@ -255,13 +249,13 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
 
   void _showDietaryHintOverlay() {
     // Only show if we're on the current route (not navigating away)
-    if (!mounted || ModalRoute.of(context)?.isCurrent != true || _hasShownHintThisSession) {
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true || _hasShownDietaryHintThisSession) {
       print('Not showing hint - not on current route or already shown this session');
       return;
     }
 
     // Mark as shown for this session
-    _hasShownHintThisSession = true;
+    _hasShownDietaryHintThisSession = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Double check we're still mounted and on current route
@@ -311,7 +305,6 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
     // Mark as seen so it doesn't show again
     await _preferencesService.setDietaryHintSeen();
   }
-
 
   Future<void> _initializeSession() async {
     final userId = SupabaseConfig.client.auth.currentUser?.id;
@@ -2491,3 +2484,4 @@ class _TrianglePainter extends CustomPainter {
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
+

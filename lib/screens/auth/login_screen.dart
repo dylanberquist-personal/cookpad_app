@@ -65,7 +65,10 @@ class _LoginScreenState extends State<LoginScreen> {
         print('🚀 Navigating to MainNavigation...');
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (context) => MainNavigation(key: ValueKey(response.user!.id)),
+            builder: (context) => MainNavigation(
+              key: ValueKey(response.user!.id),
+              isFromLogin: true,
+            ),
           ),
           (route) => false, // Remove all previous routes
         );

@@ -19,7 +19,9 @@ class _ShoppingListsScreenState extends State<ShoppingListsScreen> {
   final _shoppingListService = ShoppingListService();
   final _collectionService = CollectionService();
   
-  List<ShoppingListModel> _shoppingLists = [];
+  List<ShoppingListModel> _ownShoppingLists = [];
+  List<ShoppingListModel> _sharedShoppingLists = [];
+  List<Map<String, dynamic>> _pendingInvites = [];
   bool _isLoading = true;
 
   @override
@@ -29,20 +31,74 @@ class _ShoppingListsScreenState extends State<ShoppingListsScreen> {
   }
 
   Future<void> _loadData() async {
+    print('🔄 Loading shopping lists data...');
     setState(() => _isLoading = true);
     
     try {
-      // Load shopping lists
-      final lists = await _shoppingListService.getShoppingLists();
+      // Load own and shared shopping lists separately
+      final ownLists = await _shoppingListService.getOwnShoppingLists();
+      final sharedLists = await _shoppingListService.getSyncedShoppingLists();
+      final invites = await _shoppingListService.getPendingSyncInvites();
+      
+      print('📋 Loaded ${ownLists.length} own shopping lists');
+      print('📋 Loaded ${sharedLists.length} shared shopping lists');
+      print('📬 Loaded ${invites.length} pending invites');
+      
       setState(() {
-        _shoppingLists = lists;
+        _ownShoppingLists = ownLists;
+        _sharedShoppingLists = sharedLists;
+        _pendingInvites = invites;
         _isLoading = false;
       });
     } catch (e) {
+      print('❌ Error loading data: $e');
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading shopping lists: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _acceptShoppingListInvite(Map<String, dynamic> invite) async {
+    try {
+      print('🔄 Accepting invite: ${invite['id']}');
+      await _shoppingListService.acceptShoppingListSyncInvite(invite['id']);
+      print('✅ Invite accepted, reloading data...');
+      await _loadData();
+      print('✅ Data reloaded');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Shopping list synced successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error accepting invite: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _declineShoppingListInvite(Map<String, dynamic> invite) async {
+    try {
+      await _shoppingListService.declineShoppingListSyncInvite(invite['id']);
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invite declined')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
         );
       }
     }
@@ -83,7 +139,7 @@ class _ShoppingListsScreenState extends State<ShoppingListsScreen> {
       try {
         final newList = await _shoppingListService.createShoppingList(name: result);
         setState(() {
-          _shoppingLists.insert(0, newList);
+          _ownShoppingLists.insert(0, newList);
         });
         if (mounted) {
           Navigator.push(
@@ -247,13 +303,55 @@ class _ShoppingListsScreenState extends State<ShoppingListsScreen> {
     if (confirmed == true) {
       try {
         await _shoppingListService.deleteShoppingList(list.id);
-        setState(() {
-          _shoppingLists.removeWhere((l) => l.id == list.id);
-        });
+        _loadData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Shopping list deleted')),
+          );
+        }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Error deleting list: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _unsyncList(ShoppingListModel list) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Shared List'),
+        content: Text('Remove "${list.name}" from your lists? The list will still exist for the owner.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _shoppingListService.unsyncShoppingList(list.id);
+        _loadData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Shopping list removed')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error removing list: $e')),
           );
         }
       }
@@ -303,7 +401,7 @@ class _ShoppingListsScreenState extends State<ShoppingListsScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _shoppingLists.isEmpty
+          : _ownShoppingLists.isEmpty && _sharedShoppingLists.isEmpty && _pendingInvites.isEmpty
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -329,37 +427,165 @@ class _ShoppingListsScreenState extends State<ShoppingListsScreen> {
                 )
               : RefreshIndicator(
                   onRefresh: _loadData,
-                  child: ListView.builder(
-                    itemCount: _shoppingLists.length,
-                    itemBuilder: (context, index) {
-                      final list = _shoppingLists[index];
-                      final checkedCount = list.items.where((i) => i.isChecked).length;
-                      final totalCount = list.items.length;
-                      
-                      return ListTile(
-                        leading: const Icon(Icons.shopping_cart),
-                        title: Text(list.name),
-                        subtitle: Text(
-                          totalCount > 0
-                              ? '$checkedCount of $totalCount items checked'
-                              : 'No items',
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => _deleteList(list),
-                        ),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ShoppingListDetailScreen(
-                                shoppingListId: list.id,
-                              ),
+                  child: CustomScrollView(
+                    slivers: [
+                      // Pending Invites Section
+                      if (_pendingInvites.isNotEmpty) ...[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                            child: Text(
+                              'Pending Sync Invites',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                             ),
-                          ).then((_) => _loadData());
-                        },
-                      );
-                    },
+                          ),
+                        ),
+                        SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final invite = _pendingInvites[index];
+                              final sender = invite['sender'] as Map<String, dynamic>;
+                              final shoppingList = invite['shopping_list'] as Map<String, dynamic>?;
+                              final listName = shoppingList?['name'] as String? ?? 'Shopping List';
+                              
+                              return Card(
+                                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundImage: sender['profile_picture_url'] != null
+                                        ? NetworkImage(sender['profile_picture_url'] as String)
+                                        : null,
+                                    child: sender['profile_picture_url'] == null
+                                        ? const Icon(Icons.person)
+                                        : null,
+                                  ),
+                                  title: Text(
+                                    '${sender['username']} wants to sync',
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  subtitle: Text('List: $listName'),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.check, color: Colors.green),
+                                        onPressed: () => _acceptShoppingListInvite(invite),
+                                        tooltip: 'Accept',
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.close, color: Colors.red),
+                                        onPressed: () => _declineShoppingListInvite(invite),
+                                        tooltip: 'Decline',
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                            childCount: _pendingInvites.length,
+                          ),
+                        ),
+                      ],
+                      // My Shopping Lists Section
+                      if (_ownShoppingLists.isNotEmpty) ...[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(16, _pendingInvites.isNotEmpty ? 24 : 16, 16, 8),
+                            child: Text(
+                              'My Shopping Lists',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                          ),
+                        ),
+                        SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final list = _ownShoppingLists[index];
+                              final checkedCount = list.items.where((i) => i.isChecked).length;
+                              final totalCount = list.items.length;
+                              
+                              return ListTile(
+                                leading: const Icon(Icons.shopping_cart),
+                                title: Text(list.name),
+                                subtitle: Text(
+                                  totalCount > 0
+                                      ? '$checkedCount of $totalCount items checked'
+                                      : 'No items',
+                                ),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  onPressed: () => _deleteList(list),
+                                ),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ShoppingListDetailScreen(
+                                        shoppingListId: list.id,
+                                      ),
+                                    ),
+                                  ).then((_) => _loadData());
+                                },
+                              );
+                            },
+                            childCount: _ownShoppingLists.length,
+                          ),
+                        ),
+                      ],
+                      // Shared with Me Section
+                      if (_sharedShoppingLists.isNotEmpty) ...[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(16, (_pendingInvites.isNotEmpty || _ownShoppingLists.isNotEmpty) ? 24 : 16, 16, 8),
+                            child: Text(
+                              'Shared with Me',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                          ),
+                        ),
+                        SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final list = _sharedShoppingLists[index];
+                              final checkedCount = list.items.where((i) => i.isChecked).length;
+                              final totalCount = list.items.length;
+                              
+                              return ListTile(
+                                leading: const Icon(Icons.shopping_cart_outlined),
+                                title: Text(list.name),
+                                subtitle: Text(
+                                  totalCount > 0
+                                      ? '$checkedCount of $totalCount items checked'
+                                      : 'No items',
+                                ),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.close, color: Colors.red),
+                                  onPressed: () => _unsyncList(list),
+                                  tooltip: 'Remove from your lists',
+                                ),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ShoppingListDetailScreen(
+                                        shoppingListId: list.id,
+                                      ),
+                                    ),
+                                  ).then((_) => _loadData());
+                                },
+                              );
+                            },
+                            childCount: _sharedShoppingLists.length,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
       bottomNavigationBar: SizedBox(

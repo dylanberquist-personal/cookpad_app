@@ -7,6 +7,7 @@ import '../services/pantry_service.dart';
 import '../services/preferences_service.dart';
 import '../models/pantry_item_model.dart';
 import '../widgets/notification_badge_icon.dart';
+import '../widgets/user_search_dialog.dart';
 import 'main_navigation.dart';
 
 class PantryScreen extends StatefulWidget {
@@ -23,6 +24,7 @@ class _PantryScreenState extends State<PantryScreen> {
   bool _isLoading = true;
   Map<String, List<PantryItemModel>> _itemsByCategory = {};
   String _selectedCategory = 'All';
+  List<Map<String, dynamic>> _pendingInvites = [];
 
   @override
   void initState() {
@@ -38,6 +40,19 @@ class _PantryScreenState extends State<PantryScreen> {
     });
     if (_isEnabled) {
       await _loadPantryItems();
+      await _loadPendingInvites();
+    }
+  }
+
+  Future<void> _loadPendingInvites() async {
+    try {
+      final invites = await _pantryService.getPendingSyncInvites();
+      setState(() {
+        _pendingInvites = invites;
+      });
+    } catch (e) {
+      // Silently fail - pending invites are optional
+      print('Error loading pending invites: $e');
     }
   }
 
@@ -51,6 +66,46 @@ class _PantryScreenState extends State<PantryScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading pantry: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _acceptPantryInvite(Map<String, dynamic> invite) async {
+    try {
+      await _pantryService.acceptPantrySyncInvite(invite['id']);
+      await _loadPendingInvites();
+      await _loadPantryItems();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pantry synced successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _declinePantryInvite(Map<String, dynamic> invite) async {
+    try {
+      await _pantryService.declinePantrySyncInvite(invite['id']);
+      await _loadPendingInvites();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invite declined')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
         );
       }
     }
@@ -379,6 +434,123 @@ class _PantryScreenState extends State<PantryScreen> {
     }
   }
 
+  Future<void> _showSyncDialog() async {
+    showDialog(
+      context: context,
+      builder: (context) => UserSearchDialog(
+        title: 'Sync Pantry',
+        onUserSelected: (user) async {
+          try {
+            await _pantryService.inviteUserToSyncPantry(user.id);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Sync invite sent to ${user.username}!'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+            return true;
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error: ${e.toString()}'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            return false;
+          }
+        },
+      ),
+    );
+  }
+
+  Future<void> _showManageSyncDialog() async {
+    final syncedPantries = await _pantryService.getAcceptedSyncedPantries();
+    
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Manage Synced Pantries'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: syncedPantries.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('No synced pantries yet'),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: syncedPantries.length,
+                  itemBuilder: (context, index) {
+                    final sync = syncedPantries[index];
+                    final user = sync['user'] as Map<String, dynamic>;
+                    final status = sync['status'] as String;
+                    final role = sync['role'] as String;
+                    
+                    String statusText = '';
+                    if (status == 'pending') {
+                      statusText = role == 'sender' ? 'Pending (sent)' : 'Pending (received)';
+                    } else if (status == 'accepted') {
+                      statusText = 'Synced';
+                    }
+                    
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundImage: user['profile_picture_url'] != null
+                            ? NetworkImage(user['profile_picture_url'] as String)
+                            : null,
+                        child: user['profile_picture_url'] == null
+                            ? const Icon(Icons.person)
+                            : null,
+                      ),
+                      title: Text(user['username'] as String),
+                      subtitle: Text(statusText),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        onPressed: () async {
+                          try {
+                            await _pantryService.removeSyncedPantry(sync['id']);
+                            Navigator.pop(context);
+                            await _loadPantryItems();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Sync removed'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error: ${e.toString()}'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showImportDialog() async {
     final result = await showDialog<String>(
       context: context,
@@ -704,6 +876,39 @@ class _PantryScreenState extends State<PantryScreen> {
               onPressed: _showImportDialog,
               tooltip: 'Import Items',
             ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.sync),
+              tooltip: 'Sync Pantry',
+              onSelected: (value) {
+                if (value == 'invite') {
+                  _showSyncDialog();
+                } else if (value == 'manage') {
+                  _showManageSyncDialog();
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'invite',
+                  child: Row(
+                    children: [
+                      Icon(Icons.person_add, size: 20),
+                      SizedBox(width: 8),
+                      Text('Invite User'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'manage',
+                  child: Row(
+                    children: [
+                      Icon(Icons.settings, size: 20),
+                      SizedBox(width: 8),
+                      Text('Manage Syncs'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
             IconButton(
               icon: const Icon(Icons.add),
               onPressed: _showAddItemDialog,
@@ -830,10 +1035,71 @@ class _PantryScreenState extends State<PantryScreen> {
                               ),
                             ),
                           ),
+                        // Pending Invites Section
+                        if (_pendingInvites.isNotEmpty) ...[
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                            child: Text(
+                              'Pending Sync Invites',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: _pendingInvites.length,
+                            itemBuilder: (context, index) {
+                              final invite = _pendingInvites[index];
+                              final sender = invite['sender'] as Map<String, dynamic>;
+                              
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundImage: sender['profile_picture_url'] != null
+                                        ? NetworkImage(sender['profile_picture_url'] as String)
+                                        : null,
+                                    child: sender['profile_picture_url'] == null
+                                        ? const Icon(Icons.person)
+                                        : null,
+                                  ),
+                                  title: Text(
+                                    '${sender['username']} wants to sync',
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  subtitle: const Text('Sync your pantries together'),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.check, color: Colors.green),
+                                        onPressed: () => _acceptPantryInvite(invite),
+                                        tooltip: 'Accept',
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.close, color: Colors.red),
+                                        onPressed: () => _declinePantryInvite(invite),
+                                        tooltip: 'Decline',
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                         // Items List
                         Expanded(
                           child: RefreshIndicator(
-                            onRefresh: _loadPantryItems,
+                            onRefresh: () async {
+                              await _loadPantryItems();
+                              await _loadPendingInvites();
+                            },
                             child: ListView.separated(
                               padding: const EdgeInsets.symmetric(vertical: 4),
                               itemCount: _filteredItems.length,

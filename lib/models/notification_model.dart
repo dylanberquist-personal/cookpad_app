@@ -11,6 +11,8 @@ enum NotificationType {
   badgeEarned,
   collectionShared,
   recipeShared,
+  pantrySyncInvite,
+  shoppingListSyncInvite,
 }
 
 extension NotificationTypeExtension on NotificationType {
@@ -34,6 +36,10 @@ extension NotificationTypeExtension on NotificationType {
         return 'collection_shared';
       case NotificationType.recipeShared:
         return 'recipe_shared';
+      case NotificationType.pantrySyncInvite:
+        return 'pantry_sync_invite';
+      case NotificationType.shoppingListSyncInvite:
+        return 'shopping_list_sync_invite';
     }
   }
 
@@ -57,6 +63,10 @@ extension NotificationTypeExtension on NotificationType {
         return NotificationType.collectionShared;
       case 'recipe_shared':
         return NotificationType.recipeShared;
+      case 'pantry_sync_invite':
+        return NotificationType.pantrySyncInvite;
+      case 'shopping_list_sync_invite':
+        return NotificationType.shoppingListSyncInvite;
       default:
         return NotificationType.newFollower;
     }
@@ -82,6 +92,10 @@ extension NotificationTypeExtension on NotificationType {
         return 'Collection Shared';
       case NotificationType.recipeShared:
         return 'Recipe Shared';
+      case NotificationType.pantrySyncInvite:
+        return 'Pantry Sync Invite';
+      case NotificationType.shoppingListSyncInvite:
+        return 'Shopping List Sync Invite';
     }
   }
 
@@ -105,6 +119,10 @@ extension NotificationTypeExtension on NotificationType {
         return Icons.folder_shared;
       case NotificationType.recipeShared:
         return Icons.share;
+      case NotificationType.pantrySyncInvite:
+        return Icons.kitchen;
+      case NotificationType.shoppingListSyncInvite:
+        return Icons.shopping_cart;
     }
   }
 }
@@ -135,6 +153,12 @@ class NotificationModel {
   final String? collectionName;
   final String? sharedCollectionId;
   
+  // Sync-specific data
+  final String? shoppingListId;
+  final String? shoppingListName;
+  final String? syncedPantryId;
+  final String? syncedShoppingListId;
+  
   // Custom message from database (used for badges)
   final String? customMessage;
 
@@ -157,6 +181,10 @@ class NotificationModel {
     this.collectionId,
     this.collectionName,
     this.sharedCollectionId,
+    this.shoppingListId,
+    this.shoppingListName,
+    this.syncedPantryId,
+    this.syncedShoppingListId,
     this.customMessage,
   });
 
@@ -168,6 +196,10 @@ class NotificationModel {
     String? badgeDescription;
     String? collectionId;
     String? sharedCollectionId;
+    String? shoppingListId;
+    String? shoppingListName;
+    String? syncedPantryId;
+    String? syncedShoppingListId;
     
     if (json['data'] != null && json['data'] is Map) {
       final data = json['data'] as Map<String, dynamic>;
@@ -177,6 +209,10 @@ class NotificationModel {
       badgeDescription = data['badge_description'] as String?;
       collectionId = data['collection_id'] as String?;
       sharedCollectionId = data['shared_collection_id'] as String?;
+      shoppingListId = data['shopping_list_id'] as String?;
+      shoppingListName = data['shopping_list_name'] as String?;
+      syncedPantryId = data['synced_pantry_id'] as String?;
+      syncedShoppingListId = data['synced_shopping_list_id'] as String?;
     }
     
     return NotificationModel(
@@ -200,6 +236,10 @@ class NotificationModel {
       collectionId: collectionId,
       collectionName: json['collection_name'] as String?,
       sharedCollectionId: sharedCollectionId,
+      shoppingListId: shoppingListId,
+      shoppingListName: shoppingListName ?? json['shopping_list_name'] as String?,
+      syncedPantryId: syncedPantryId,
+      syncedShoppingListId: syncedShoppingListId,
       customMessage: json['message'] as String?,
     );
   }
@@ -261,6 +301,13 @@ class NotificationModel {
         return '$actorName shared a collection with you';
       case NotificationType.recipeShared:
         return '$actorName sent you a recipe${recipeTitle != null ? ": $recipeTitle" : ""}';
+      case NotificationType.pantrySyncInvite:
+        return '$actorName invited you to sync Pantries';
+      case NotificationType.shoppingListSyncInvite:
+        if (shoppingListName != null) {
+          return '$actorName invited you to sync shopping list: $shoppingListName';
+        }
+        return '$actorName invited you to sync a shopping list';
     }
   }
   

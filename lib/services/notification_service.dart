@@ -309,13 +309,17 @@ class NotificationService {
       print('⚠️ Notification ($notifType): No actor data in JSON! actor_id: ${json['actor_id']}');
     }
 
-    // Parse badge and collection data from the joined badge table or from the data JSONB field
+    // Parse badge, collection, and sync data from the joined badge table or from the data JSONB field
     String? badgeId;
     String? badgeName;
     String? badgeIcon;
     String? badgeDescription;
     String? collectionId;
     String? sharedCollectionId;
+    String? shoppingListId;
+    String? shoppingListName;
+    String? syncedPantryId;
+    String? syncedShoppingListId;
     
     // First try to get badge data from the joined badge relationship
     final badgeJson = json['badge'] as Map<String, dynamic>?;
@@ -326,7 +330,7 @@ class NotificationService {
       badgeDescription = badgeJson['description'] as String?;
     }
     
-    // Parse data JSONB field for badge and collection data
+    // Parse data JSONB field for badge, collection, and sync data
     if (json['data'] != null && json['data'] is Map) {
       final data = json['data'] as Map<String, dynamic>;
       // Badge data (if not from joined table)
@@ -339,6 +343,11 @@ class NotificationService {
       // Collection data
       collectionId = data['collection_id'] as String?;
       sharedCollectionId = data['shared_collection_id'] as String?;
+      // Sync data
+      shoppingListId = data['shopping_list_id'] as String?;
+      shoppingListName = data['shopping_list_name'] as String?;
+      syncedPantryId = data['synced_pantry_id'] as String?;
+      syncedShoppingListId = data['synced_shopping_list_id'] as String?;
     }
 
     return NotificationModel(
@@ -357,6 +366,10 @@ class NotificationService {
       badgeDescription: badgeDescription,
       collectionId: collectionId,
       sharedCollectionId: sharedCollectionId,
+      shoppingListId: shoppingListId,
+      shoppingListName: shoppingListName,
+      syncedPantryId: syncedPantryId,
+      syncedShoppingListId: syncedShoppingListId,
       customMessage: json['message'] as String?,
     );
   }

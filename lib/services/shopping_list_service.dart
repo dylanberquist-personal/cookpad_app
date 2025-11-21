@@ -8,8 +8,88 @@ class ShoppingListService {
   final _collectionService = CollectionService();
   final _pantryService = PantryService();
 
-  /// Get all shopping lists for the current user
+  /// Get all shopping lists for the current user (including synced lists)
   Future<List<ShoppingListModel>> getShoppingLists() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    // Get own shopping lists
+    final ownResponse = await _supabase
+        .from('shopping_lists')
+        .select('*, items:shopping_list_items(*)')
+        .eq('user_id', userId)
+        .order('updated_at', ascending: false);
+
+    final ownLists = (ownResponse as List).map((json) => _shoppingListFromJson(json)).toList();
+    print('📋 Found ${ownLists.length} own shopping lists');
+
+    // Get synced shopping list IDs where user is sender
+    final syncedAsSender = await _supabase
+        .from('synced_shopping_lists')
+        .select('shopping_list_id')
+        .eq('sender_id', userId)
+        .eq('status', 'accepted');
+
+    // Get synced shopping list IDs where user is recipient
+    final syncedAsRecipient = await _supabase
+        .from('synced_shopping_lists')
+        .select('shopping_list_id')
+        .eq('recipient_id', userId)
+        .eq('status', 'accepted');
+
+    print('📋 Synced as sender: ${(syncedAsSender as List).length}');
+    print('📋 Synced as recipient: ${(syncedAsRecipient as List).length}');
+
+    final syncedListIds = <String>{};
+    for (final row in syncedAsSender as List) {
+      final id = row['shopping_list_id'] as String;
+      if (!ownLists.any((list) => list.id == id)) {
+        syncedListIds.add(id);
+      }
+    }
+    for (final row in syncedAsRecipient as List) {
+      final id = row['shopping_list_id'] as String;
+      if (!ownLists.any((list) => list.id == id)) {
+        syncedListIds.add(id);
+      }
+    }
+
+    print('📋 Total unique synced list IDs: ${syncedListIds.length}');
+    if (syncedListIds.isNotEmpty) {
+      print('📋 Synced list IDs: ${syncedListIds.toList()}');
+    }
+
+    // Get synced shopping lists
+    final syncedLists = <ShoppingListModel>[];
+    if (syncedListIds.isNotEmpty) {
+      try {
+        print('📋 Attempting to fetch shopping lists with IDs: ${syncedListIds.toList()}');
+        final syncedResponse = await _supabase
+            .from('shopping_lists')
+            .select('*, items:shopping_list_items(*)')
+            .inFilter('id', syncedListIds.toList())
+            .order('updated_at', ascending: false);
+
+        print('📋 Raw response: ${syncedResponse}');
+        syncedLists.addAll(
+          (syncedResponse as List).map((json) => _shoppingListFromJson(json)).toList(),
+        );
+        print('📋 Fetched ${syncedLists.length} synced shopping lists');
+      } catch (e) {
+        print('❌ Error fetching synced lists: $e');
+      }
+    }
+
+    // Combine and sort by updated_at
+    final allLists = [...ownLists, ...syncedLists];
+    allLists.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    print('📋 Total lists: ${allLists.length}');
+    return allLists;
+  }
+
+  /// Get only owned shopping lists
+  Future<List<ShoppingListModel>> getOwnShoppingLists() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
 
@@ -22,7 +102,47 @@ class ShoppingListService {
     return (response as List).map((json) => _shoppingListFromJson(json)).toList();
   }
 
-  /// Get a shopping list by ID with its items
+  /// Get only synced (shared with me) shopping lists
+  Future<List<ShoppingListModel>> getSyncedShoppingLists() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    // Get synced shopping list IDs where user is recipient
+    final syncedAsRecipient = await _supabase
+        .from('synced_shopping_lists')
+        .select('shopping_list_id')
+        .eq('recipient_id', userId)
+        .eq('status', 'accepted');
+
+    final syncedListIds = (syncedAsRecipient as List)
+        .map((row) => row['shopping_list_id'] as String)
+        .toList();
+
+    if (syncedListIds.isEmpty) return [];
+
+    final syncedResponse = await _supabase
+        .from('shopping_lists')
+        .select('*, items:shopping_list_items(*)')
+        .inFilter('id', syncedListIds)
+        .order('updated_at', ascending: false);
+
+    return (syncedResponse as List).map((json) => _shoppingListFromJson(json)).toList();
+  }
+
+  /// Unsync from a shopping list (remove from your view without deleting)
+  Future<void> unsyncShoppingList(String shoppingListId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    // Delete the sync record where user is recipient
+    await _supabase
+        .from('synced_shopping_lists')
+        .delete()
+        .eq('shopping_list_id', shoppingListId)
+        .eq('recipient_id', userId);
+  }
+
+  /// Get a shopping list by ID with its items (includes synced lists)
   Future<ShoppingListModel?> getShoppingListById(String shoppingListId) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
@@ -31,12 +151,28 @@ class ShoppingListService {
         .from('shopping_lists')
         .select('*, items:shopping_list_items(*)')
         .eq('id', shoppingListId)
-        .eq('user_id', userId)
         .maybeSingle();
 
     if (response == null) return null;
 
-    return _shoppingListFromJson(response);
+    final list = _shoppingListFromJson(response);
+    
+    // Verify user has access (owner or synced)
+    if (list.userId != userId) {
+      final syncCheck = await _supabase
+          .from('synced_shopping_lists')
+          .select()
+          .eq('shopping_list_id', shoppingListId)
+          .eq('status', 'accepted')
+          .or('sender_id.eq.$userId,recipient_id.eq.$userId')
+          .maybeSingle();
+      
+      if (syncCheck == null) {
+        throw Exception('Unauthorized access to shopping list');
+      }
+    }
+
+    return list;
   }
 
   /// Create a new shopping list
@@ -196,11 +332,11 @@ class ShoppingListService {
         .select()
         .single();
 
-    // Verify ownership through shopping list
+    // Verify access through shopping list (owner or synced)
     final item = ShoppingListItemModel.fromJson(response);
     final list = await getShoppingListById(item.shoppingListId);
-    if (list == null || list.userId != userId) {
-      throw Exception('Unauthorized');
+    if (list == null) {
+      throw Exception('Shopping list not found');
     }
 
     // Update shopping list updated_at
@@ -228,10 +364,10 @@ class ShoppingListService {
 
     final shoppingListId = itemResponse['shopping_list_id'] as String;
 
-    // Verify ownership
+    // Verify access (owner or synced)
     final list = await getShoppingListById(shoppingListId);
-    if (list == null || list.userId != userId) {
-      throw Exception('Unauthorized');
+    if (list == null) {
+      throw Exception('Shopping list not found');
     }
 
     await _supabase.from('shopping_list_items').delete().eq('id', id);
@@ -259,10 +395,10 @@ class ShoppingListService {
 
     final currentItem = ShoppingListItemModel.fromJson(itemResponse);
 
-    // Verify ownership
+    // Verify access (owner or synced)
     final list = await getShoppingListById(currentItem.shoppingListId);
-    if (list == null || list.userId != userId) {
-      throw Exception('Unauthorized');
+    if (list == null) {
+      throw Exception('Shopping list not found');
     }
 
     // Toggle checked status
@@ -389,6 +525,183 @@ class ShoppingListService {
     // Simple merge - just return the first one for now
     // Could be enhanced to parse and add quantities
     return q1.isNotEmpty ? q1 : q2;
+  }
+
+  /// ========================================
+  /// SHOPPING LIST SYNC METHODS
+  /// ========================================
+
+  /// Send a shopping list sync invitation to another user
+  Future<void> inviteUserToSyncShoppingList(String shoppingListId, String recipientUserId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    if (userId == recipientUserId) {
+      throw Exception('Cannot sync shopping list with yourself');
+    }
+
+    // Verify ownership of shopping list
+    final list = await getShoppingListById(shoppingListId);
+    if (list == null || list.userId != userId) {
+      throw Exception('Shopping list not found or unauthorized');
+    }
+
+    // Check if invitation already exists
+    final existing = await _supabase
+        .from('synced_shopping_lists')
+        .select()
+        .eq('shopping_list_id', shoppingListId)
+        .eq('recipient_id', recipientUserId)
+        .maybeSingle();
+
+    if (existing != null) {
+      final status = existing['status'] as String;
+      if (status == 'accepted') {
+        throw Exception('Already synced with this user');
+      } else if (status == 'pending') {
+        throw Exception('Invite already pending with this user');
+      }
+      // If declined, delete the old one and create new
+      await _supabase
+          .from('synced_shopping_lists')
+          .delete()
+          .eq('id', existing['id']);
+    }
+
+    await _supabase.from('synced_shopping_lists').insert({
+      'shopping_list_id': shoppingListId,
+      'sender_id': userId,
+      'recipient_id': recipientUserId,
+      'status': 'pending',
+    });
+  }
+
+  /// Accept a shopping list sync invitation
+  Future<void> acceptShoppingListSyncInvite(String syncedShoppingListId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    print('🔄 Accepting sync invite $syncedShoppingListId for user $userId');
+    
+    // First, check the current state
+    final checkBefore = await _supabase
+        .from('synced_shopping_lists')
+        .select()
+        .eq('id', syncedShoppingListId);
+    print('📋 Before update: ${checkBefore}');
+
+    await _supabase
+        .from('synced_shopping_lists')
+        .update({'status': 'accepted'})
+        .eq('id', syncedShoppingListId)
+        .eq('recipient_id', userId);
+    
+    // Check after update
+    final checkAfter = await _supabase
+        .from('synced_shopping_lists')
+        .select()
+        .eq('id', syncedShoppingListId);
+    print('📋 After update: ${checkAfter}');
+  }
+
+  /// Decline a shopping list sync invitation
+  Future<void> declineShoppingListSyncInvite(String syncedShoppingListId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    await _supabase
+        .from('synced_shopping_lists')
+        .delete()
+        .eq('id', syncedShoppingListId)
+        .eq('recipient_id', userId);
+  }
+
+  /// Remove a synced shopping list connection
+  Future<void> removeSyncedShoppingList(String syncedShoppingListId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    await _supabase
+        .from('synced_shopping_lists')
+        .delete()
+        .eq('id', syncedShoppingListId)
+        .or('sender_id.eq.$userId,recipient_id.eq.$userId');
+  }
+
+  /// Get pending shopping list sync invitations
+  Future<List<Map<String, dynamic>>> getPendingSyncInvites() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    final response = await _supabase
+        .from('synced_shopping_lists')
+        .select('''
+          *, 
+          sender:users!sender_id(*), 
+          shopping_list:shopping_lists(id, name)
+        ''')
+        .eq('recipient_id', userId)
+        .eq('status', 'pending')
+        .order('created_at', ascending: false);
+
+    return (response as List).map((e) => e as Map<String, dynamic>).toList();
+  }
+
+  /// Get list of users synced with a specific shopping list
+  Future<List<Map<String, dynamic>>> getSyncedUsers(String shoppingListId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    // Verify ownership or sync access
+    final list = await getShoppingListById(shoppingListId);
+    if (list == null) throw Exception('Shopping list not found');
+
+    final response = await _supabase
+        .from('synced_shopping_lists')
+        .select('id, status, recipient:users!recipient_id(id, username, display_name, profile_picture_url)')
+        .eq('shopping_list_id', shoppingListId)
+        .eq('sender_id', userId);
+
+    return (response as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Check if shopping list is synced with current user
+  Future<bool> isShoppingListSynced(String shoppingListId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return false;
+
+    final response = await _supabase
+        .from('synced_shopping_lists')
+        .select()
+        .eq('shopping_list_id', shoppingListId)
+        .eq('status', 'accepted')
+        .or('sender_id.eq.$userId,recipient_id.eq.$userId')
+        .maybeSingle();
+
+    return response != null;
+  }
+
+  /// Get shopping list sync info (who it's synced with)
+  Future<Map<String, dynamic>?> getShoppingListSyncInfo(String shoppingListId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return null;
+
+    final response = await _supabase
+        .from('synced_shopping_lists')
+        .select('''
+          id,
+          status,
+          sender_id,
+          recipient_id,
+          sender:users!sender_id(id, username, display_name, profile_picture_url),
+          recipient:users!recipient_id(id, username, display_name, profile_picture_url)
+        ''')
+        .eq('shopping_list_id', shoppingListId)
+        .eq('status', 'accepted')
+        .or('sender_id.eq.$userId,recipient_id.eq.$userId')
+        .maybeSingle();
+
+    return response;
   }
 }
 

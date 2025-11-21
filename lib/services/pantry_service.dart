@@ -4,20 +4,50 @@ import '../models/pantry_item_model.dart';
 class PantryService {
   final _supabase = SupabaseConfig.client;
 
-  /// Get all pantry items for the current user
+  /// Get all pantry items for the current user (including synced pantries)
   Future<List<PantryItemModel>> getPantryItems() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
 
-    final response = await _supabase
+    // Get own pantry items
+    final ownResponse = await _supabase
         .from('pantry_items')
         .select()
         .eq('user_id', userId)
         .order('added_at', ascending: false);
 
-    return (response as List)
+    final ownItems = (ownResponse as List)
         .map((json) => PantryItemModel.fromJson(json))
         .toList();
+
+    // Get synced users' pantry items
+    final syncedUsers = await getSyncedUsers();
+    final allItems = List<PantryItemModel>.from(ownItems);
+
+    for (final syncedUserId in syncedUsers) {
+      final syncedResponse = await _supabase
+          .from('pantry_items')
+          .select()
+          .eq('user_id', syncedUserId)
+          .order('added_at', ascending: false);
+
+      final syncedItems = (syncedResponse as List)
+          .map((json) => PantryItemModel.fromJson(json))
+          .toList();
+      
+      allItems.addAll(syncedItems);
+    }
+
+    // Remove duplicates and sort by date
+    final uniqueItems = <String, PantryItemModel>{};
+    for (final item in allItems) {
+      uniqueItems[item.id] = item;
+    }
+
+    final result = uniqueItems.values.toList();
+    result.sort((a, b) => b.addedAt.compareTo(a.addedAt));
+
+    return result;
   }
 
   /// Get pantry items grouped by category
@@ -181,6 +211,168 @@ class PantryService {
       'Snacks',
       'Other',
     ];
+  }
+
+  /// ========================================
+  /// PANTRY SYNC METHODS
+  /// ========================================
+
+  /// Send a pantry sync invitation to another user
+  Future<void> inviteUserToSyncPantry(String recipientUserId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    if (userId == recipientUserId) {
+      throw Exception('Cannot sync pantry with yourself');
+    }
+
+    // Check if invitation already exists
+    final existing = await _supabase
+        .from('synced_pantries')
+        .select()
+        .or('and(sender_id.eq.$userId,recipient_id.eq.$recipientUserId),and(sender_id.eq.$recipientUserId,recipient_id.eq.$userId)')
+        .maybeSingle();
+
+    if (existing != null) {
+      final status = existing['status'] as String;
+      if (status == 'accepted') {
+        throw Exception('Already synced with this user');
+      } else if (status == 'pending') {
+        throw Exception('Invite already pending with this user');
+      }
+      // If declined, delete the old one and create new
+      await _supabase
+          .from('synced_pantries')
+          .delete()
+          .eq('id', existing['id']);
+    }
+
+    await _supabase.from('synced_pantries').insert({
+      'sender_id': userId,
+      'recipient_id': recipientUserId,
+      'status': 'pending',
+    });
+  }
+
+  /// Accept a pantry sync invitation
+  Future<void> acceptPantrySyncInvite(String syncedPantryId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    await _supabase
+        .from('synced_pantries')
+        .update({'status': 'accepted'})
+        .eq('id', syncedPantryId)
+        .eq('recipient_id', userId);
+  }
+
+  /// Decline a pantry sync invitation
+  Future<void> declinePantrySyncInvite(String syncedPantryId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    await _supabase
+        .from('synced_pantries')
+        .delete()
+        .eq('id', syncedPantryId)
+        .eq('recipient_id', userId);
+  }
+
+  /// Remove a synced pantry connection
+  Future<void> removeSyncedPantry(String syncedPantryId) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    await _supabase
+        .from('synced_pantries')
+        .delete()
+        .eq('id', syncedPantryId)
+        .or('sender_id.eq.$userId,recipient_id.eq.$userId');
+  }
+
+  /// Get pending pantry sync invitations
+  Future<List<Map<String, dynamic>>> getPendingSyncInvites() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    final response = await _supabase
+        .from('synced_pantries')
+        .select('*, sender:users!sender_id(*)')
+        .eq('recipient_id', userId)
+        .eq('status', 'pending')
+        .order('created_at', ascending: false);
+
+    return (response as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Get list of users currently synced with current user
+  Future<List<String>> getSyncedUsers() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return [];
+
+    final response = await _supabase
+        .from('synced_pantries')
+        .select('sender_id, recipient_id')
+        .eq('status', 'accepted')
+        .or('sender_id.eq.$userId,recipient_id.eq.$userId');
+
+    final syncedUsers = <String>[];
+    for (final row in response as List) {
+      final senderId = row['sender_id'] as String;
+      final recipientId = row['recipient_id'] as String;
+      
+      if (senderId == userId) {
+        syncedUsers.add(recipientId);
+      } else {
+        syncedUsers.add(senderId);
+      }
+    }
+
+    return syncedUsers;
+  }
+
+  /// Get list of accepted synced pantries with user details
+  Future<List<Map<String, dynamic>>> getAcceptedSyncedPantries() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    // Get pantries where current user is sender
+    final sentResponse = await _supabase
+        .from('synced_pantries')
+        .select('id, status, created_at, recipient:users!recipient_id(id, username, display_name, profile_picture_url)')
+        .eq('sender_id', userId)
+        .order('created_at', ascending: false);
+
+    // Get pantries where current user is recipient
+    final receivedResponse = await _supabase
+        .from('synced_pantries')
+        .select('id, status, created_at, sender:users!sender_id(id, username, display_name, profile_picture_url)')
+        .eq('recipient_id', userId)
+        .order('created_at', ascending: false);
+
+    final result = <Map<String, dynamic>>[];
+    
+    for (final row in sentResponse as List) {
+      result.add({
+        'id': row['id'],
+        'status': row['status'],
+        'created_at': row['created_at'],
+        'user': row['recipient'],
+        'role': 'sender',
+      });
+    }
+
+    for (final row in receivedResponse as List) {
+      result.add({
+        'id': row['id'],
+        'status': row['status'],
+        'created_at': row['created_at'],
+        'user': row['sender'],
+        'role': 'recipient',
+      });
+    }
+
+    return result;
   }
 }
 

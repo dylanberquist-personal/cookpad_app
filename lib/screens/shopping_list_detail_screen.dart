@@ -7,6 +7,7 @@ import '../services/pantry_service.dart';
 import '../services/collection_service.dart';
 import '../config/supabase_config.dart';
 import '../widgets/notification_badge_icon.dart';
+import '../widgets/user_search_dialog.dart';
 import 'main_navigation.dart';
 
 class ShoppingListDetailScreen extends StatefulWidget {
@@ -472,6 +473,120 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
     }
   }
 
+  Future<void> _showSyncDialog() async {
+    if (_shoppingList == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => UserSearchDialog(
+        title: 'Sync Shopping List',
+        onUserSelected: (user) async {
+          try {
+            await _shoppingListService.inviteUserToSyncShoppingList(
+              _shoppingList!.id,
+              user.id,
+            );
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Sync invite sent to ${user.username}!'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+            return true;
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error: ${e.toString()}'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            return false;
+          }
+        },
+      ),
+    );
+  }
+
+  Future<void> _showManageSyncDialog() async {
+    if (_shoppingList == null) return;
+
+    final syncedUsers = await _shoppingListService.getSyncedUsers(_shoppingList!.id);
+    
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Manage Synced Users'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: syncedUsers.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('No synced users yet'),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: syncedUsers.length,
+                  itemBuilder: (context, index) {
+                    final sync = syncedUsers[index];
+                    final user = sync['recipient'] as Map<String, dynamic>;
+                    final status = sync['status'] as String;
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundImage: user['profile_picture_url'] != null
+                            ? NetworkImage(user['profile_picture_url'] as String)
+                            : null,
+                        child: user['profile_picture_url'] == null
+                            ? const Icon(Icons.person)
+                            : null,
+                      ),
+                      title: Text(user['username'] as String),
+                      subtitle: Text(status == 'pending' ? 'Pending' : 'Synced'),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        onPressed: () async {
+                          try {
+                            await _shoppingListService.removeSyncedShoppingList(sync['id']);
+                            Navigator.pop(context);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Sync removed'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error: ${e.toString()}'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _editListName() async {
     if (_shoppingList == null) return;
 
@@ -560,6 +675,40 @@ class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
                 _importFromCollection();
               }
             },
+          ),
+          // Sync button
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.sync),
+            tooltip: 'Sync Shopping List',
+            onSelected: (value) {
+              if (value == 'invite') {
+                _showSyncDialog();
+              } else if (value == 'manage') {
+                _showManageSyncDialog();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'invite',
+                child: Row(
+                  children: [
+                    Icon(Icons.person_add, size: 20),
+                    SizedBox(width: 8),
+                    Text('Invite User'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'manage',
+                child: Row(
+                  children: [
+                    Icon(Icons.settings, size: 20),
+                    SizedBox(width: 8),
+                    Text('Manage Syncs'),
+                  ],
+                ),
+              ),
+            ],
           ),
           // Pantry toggle (only show if pantry feature is enabled)
           if (_pantryEnabled)

@@ -4,6 +4,8 @@ import '../services/notification_service.dart';
 import '../models/notification_model.dart';
 import 'recipe_detail_screen_new.dart';
 import 'collections_screen.dart';
+import 'pantry_screen.dart';
+import 'shopping_lists_screen.dart';
 import '../services/recipe_service_supabase.dart';
 import 'my_profile_detail_screen.dart';
 
@@ -138,7 +140,29 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     await _markAsRead(notification);
 
     // Navigate based on notification type
-    if (notification.type == NotificationType.collectionShared) {
+    if (notification.type == NotificationType.pantrySyncInvite) {
+      // Navigate to pantry screen where pending invites are shown
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const PantryScreen(),
+          ),
+        );
+      }
+      return; // Don't fall through to other handlers
+    } else if (notification.type == NotificationType.shoppingListSyncInvite) {
+      // Navigate to shopping lists screen where pending invites are shown
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const ShoppingListsScreen(),
+          ),
+        );
+      }
+      return; // Don't fall through to other handlers
+    } else if (notification.type == NotificationType.collectionShared) {
       // Navigate to collections screen where pending collections are shown
       if (mounted) {
         Navigator.push(
@@ -247,6 +271,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Colors.indigo;
       case NotificationType.recipeShared:
         return Colors.cyan;
+      case NotificationType.pantrySyncInvite:
+        return Colors.brown;
+      case NotificationType.shoppingListSyncInvite:
+        return Colors.deepPurple;
     }
   }
 

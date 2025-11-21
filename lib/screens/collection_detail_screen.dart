@@ -487,6 +487,33 @@ class _RecipeCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.speed,
+                            size: 14,
+                            color: recipe.difficultyLevel.name == 'easy'
+                                ? Colors.green
+                                : recipe.difficultyLevel.name == 'medium'
+                                    ? Colors.orange
+                                    : Colors.red,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            recipe.difficultyLevel.name == 'medium' ? 'INTERMEDIATE' : recipe.difficultyLevel.name.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: recipe.difficultyLevel.name == 'easy'
+                                  ? Colors.green
+                                  : recipe.difficultyLevel.name == 'medium'
+                                      ? Colors.orange
+                                      : Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),

@@ -334,7 +334,7 @@ class _RecipeCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        recipe.difficultyLevel.name.toUpperCase(),
+                        recipe.difficultyLevel.name == 'medium' ? 'INTERMEDIATE' : recipe.difficultyLevel.name.toUpperCase(),
                         style: TextStyle(
                           fontSize: 12,
                           color: recipe.difficultyLevel.name == 'easy'

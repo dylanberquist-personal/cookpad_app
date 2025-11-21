@@ -2,9 +2,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/recipe_model.dart';
 import '../models/user_model.dart';
+import 'block_service.dart';
 
 class PersonalizedFeedService {
   final _supabase = SupabaseConfig.client;
+  final _blockService = BlockService();
 
   /// Get personalized feed for the current user
   Future<List<RecipeModel>> getPersonalizedFeed({
@@ -199,6 +201,12 @@ class PersonalizedFeedService {
 
       return _ScoredRecipe(recipe: recipe, score: score);
     }).toList();
+
+    // Filter out recipes from blocked users
+    final blockedUserIds = await _blockService.getBlockedUserIds();
+    if (blockedUserIds.isNotEmpty) {
+      scoredRecipes.removeWhere((sr) => blockedUserIds.contains(sr.recipe.userId));
+    }
 
     // Sort by score (descending) then by creation date (descending)
     scoredRecipes.sort((a, b) {

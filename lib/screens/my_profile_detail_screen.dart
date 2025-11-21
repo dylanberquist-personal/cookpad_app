@@ -15,6 +15,7 @@ import '../models/badge_model.dart';
 import '../config/supabase_config.dart';
 import '../widgets/creator_profile_card.dart';
 import '../widgets/notification_badge_icon.dart';
+import '../services/block_service.dart';
 import 'main_navigation.dart';
 import 'recipe_detail_screen_new.dart';
 import 'collection_detail_screen.dart';
@@ -38,6 +39,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
   final _collectionService = CollectionService();
   final _preferencesService = PreferencesService();
   final _badgeService = BadgeService();
+  final _blockService = BlockService();
   final _supabase = SupabaseConfig.client;
   final _scrollController = ScrollController();
   final GlobalKey _recipesKey = GlobalKey();
@@ -50,6 +52,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
   bool _isUploadingImage = false;
   bool _isFollowing = false;
   bool _isTogglingFollow = false;
+  bool _isBlockedBy = false;
   Color? _bannerColor;
   int _currentNavIndex = 4; // Profile is index 4
   List<RecipeModel> _publicRecipes = [];
@@ -124,9 +127,10 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
       // Load badges
       await _loadBadges();
 
-      // Load follow status
+      // Load follow status and block status
       if (!_isOwner) {
         await _checkFollowStatus();
+        await _checkBlockStatus();
       }
 
       // Load public recipes
@@ -239,6 +243,17 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
       });
     } catch (e) {
       print('Error checking follow status: $e');
+    }
+  }
+
+  Future<void> _checkBlockStatus() async {
+    try {
+      final isBlockedBy = await _blockService.isBlockedBy(widget.userId);
+      setState(() {
+        _isBlockedBy = isBlockedBy;
+      });
+    } catch (e) {
+      print('Error checking block status: $e');
     }
   }
 
@@ -764,8 +779,46 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Follow Button (only show if not owner)
-                  if (!_isOwner) ...[
+                  // Show blocked message if user has blocked current user
+                  if (_isBlockedBy && !_isOwner) ...[
+                    Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.block,
+                              size: 48,
+                              color: Colors.red,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'This user has blocked you',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white : Colors.black87,
+                                  ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'You cannot view their profile, recipes, or interact with their content.',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                  ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  // Follow Button (only show if not owner and not blocked)
+                  if (!_isOwner && !_isBlockedBy) ...[
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -789,7 +842,8 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                     const SizedBox(height: 24),
                   ],
 
-                  // Stats Card
+                  // Stats Card (only show if not blocked)
+                  if (!_isBlockedBy || _isOwner) ...[
                   Card(
                     elevation: 2,
                     shape: RoundedRectangleBorder(
@@ -1121,12 +1175,37 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                       ),
                     ),
                   ],
+                  ],
                   const SizedBox(height: 24),
+                  
+                  // Block User Button (only show if not owner and not blocked)
+                  if (!_isOwner && !_isBlockedBy) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _showBlockDialog,
+                        icon: const Icon(Icons.block, color: Colors.red),
+                        label: const Text(
+                          'Block User',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: const BorderSide(color: Colors.red),
+                          ),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+                  ],
                 ],
               ),
             ),
 
-            // Public Recipes Section
+            // Public Recipes Section (only show if not blocked)
+            if (!_isBlockedBy || _isOwner) ...[
             if (_publicRecipes.isNotEmpty) ...[
               Container(
                 key: _recipesKey,
@@ -1181,9 +1260,11 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                   ],
                 ),
               ),
+              ],
             ],
 
-            // Public Collections Section
+            // Public Collections Section (only show if not blocked)
+            if (!_isBlockedBy || _isOwner) ...[
             if (_publicCollections.isNotEmpty) ...[
               Container(
                 key: _collectionsKey,
@@ -1241,6 +1322,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                   ],
                 ),
               ),
+              ],
             ],
           ],
         ),
@@ -1562,6 +1644,114 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
         ],
       ],
     );
+  }
+
+  Future<void> _showBlockDialog() async {
+    if (_isOwner) return;
+
+    final isBlocked = await _blockService.isBlocked(widget.userId);
+
+    if (isBlocked) {
+      // Show unblock dialog
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Unblock User'),
+          content: Text(
+            'Are you sure you want to unblock ${_userProfile?.displayName ?? _userProfile?.username ?? 'this user'}? You will be able to see their content again.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Unblock'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true) {
+        try {
+          await _blockService.unblockUser(widget.userId);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('User unblocked successfully'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            // Navigate back since we can now see their content
+            Navigator.pop(context);
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to unblock user: ${e.toString()}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      }
+    } else {
+      // Show block dialog
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Block User'),
+          content: Text(
+            'Are you sure you want to block ${_userProfile?.displayName ?? _userProfile?.username ?? 'this user'}? You will no longer see their profile or recipes, and they will not be able to interact with your content.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Block'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true) {
+        try {
+          await _blockService.blockUser(widget.userId);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('User blocked successfully'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            // Navigate back since we can't see their content anymore
+            Navigator.pop(context);
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to block user: ${e.toString()}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      }
+    }
   }
 
   Future<void> _showAddCustomDietaryDialog() async {

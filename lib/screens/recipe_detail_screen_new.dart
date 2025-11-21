@@ -14,9 +14,12 @@ import '../config/supabase_config.dart';
 import '../services/comment_service.dart';
 import '../models/comment_model.dart';
 import '../models/collection_model.dart';
+import '../models/blocked_user_exception.dart';
+import '../services/block_service.dart';
 import '../widgets/creator_profile_card.dart';
 import '../widgets/notification_badge_icon.dart';
 import '../widgets/user_search_dialog.dart';
+import '../services/report_service.dart';
 import 'main_navigation.dart';
 
 class RecipeDetailScreenNew extends StatefulWidget {
@@ -158,7 +161,7 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
     
     try {
       // Update server
-    await _recipeService.toggleFavorite(_recipe.id);
+      await _recipeService.toggleFavorite(_recipe.id);
     } catch (e) {
       // Revert on error
       setState(() {
@@ -194,15 +197,34 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
       });
       
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update favorite: $e')),
-      );
+      
+      // Handle blocked user exception with user-friendly dialog
+      if (e is BlockedUserException) {
+        _showBlockedUserDialog(e.message);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update favorite: ${e.toString()}')),
+        );
+      }
     }
   }
 
   Future<void> _rateRecipe(int rating) async {
-    await _recipeService.rateRecipe(_recipe.id, rating);
-    await _loadRecipe();
+    try {
+      await _recipeService.rateRecipe(_recipe.id, rating);
+      await _loadRecipe();
+    } catch (e) {
+      if (!mounted) return;
+      
+      // Handle blocked user exception with user-friendly dialog
+      if (e is BlockedUserException) {
+        _showBlockedUserDialog(e.message);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to rate recipe: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   Future<void> _showAddToCollectionDialog() async {
@@ -291,6 +313,21 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
   }
 
   Future<void> _addImageToRecipe() async {
+    // Check if user is blocked before attempting to add image
+    final currentUserId = SupabaseConfig.client.auth.currentUser?.id;
+    if (currentUserId != null && currentUserId != _recipe.userId) {
+      final blockService = BlockService();
+      final isBlockedBy = await blockService.isBlockedBy(_recipe.userId);
+      if (isBlockedBy) {
+        if (mounted) {
+          _showBlockedUserDialog(
+            'You cannot add images to this recipe because the creator has blocked you.',
+          );
+        }
+        return;
+      }
+    }
+
     try {
       final imagePicker = ImagePicker();
       // Allow multiple image selection
@@ -350,13 +387,19 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
       } catch (e) {
         if (!mounted) return;
         Navigator.pop(context); // Close loading dialog
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to upload images: ${e.toString()}'),
-              backgroundColor: Colors.red,
-            ),
-          );
+        
+        // Handle blocked user exception with user-friendly dialog
+        if (e is BlockedUserException) {
+          _showBlockedUserDialog(e.message);
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to upload images: ${e.toString()}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
         }
       }
     } catch (e) {
@@ -535,6 +578,21 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
   }
 
   Future<void> _generateNutritionInfo({bool regenerate = false}) async {
+    // Check if user is blocked before attempting generation
+    final currentUserId = SupabaseConfig.client.auth.currentUser?.id;
+    if (currentUserId != null && currentUserId != _recipe.userId) {
+      final blockService = BlockService();
+      final isBlockedBy = await blockService.isBlockedBy(_recipe.userId);
+      if (isBlockedBy) {
+        if (mounted) {
+          _showBlockedUserDialog(
+            'You cannot generate nutrition info for this recipe because the creator has blocked you.',
+          );
+        }
+        return;
+      }
+    }
+
     // Show loading dialog
     if (!mounted) return;
     showDialog(
@@ -633,12 +691,18 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
 
       // Show error message
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to generate nutrition info: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      
+      // Handle blocked user exception with user-friendly dialog
+      if (e is BlockedUserException) {
+        _showBlockedUserDialog(e.message);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to generate nutrition info: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -823,6 +887,16 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
                   _shareRecipe();
                 },
               ),
+              // Report recipe (only if not owner)
+              if (!isOwner)
+                ListTile(
+                  leading: const Icon(Icons.flag, color: Colors.red),
+                  title: const Text('Report', style: TextStyle(color: Colors.red)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showReportDialog();
+                  },
+                ),
               // Toggle public/private (only for recipe owner)
               if (isOwner)
                 ListTile(
@@ -873,6 +947,59 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
         );
       }
     }
+  }
+
+  void _showReportDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => _ReportDialog(
+        recipeId: _recipe.id,
+        comments: _comments,
+        images: _recipe.imageUrls ?? [],
+        onReportSubmitted: () {
+          Navigator.pop(context);
+          _showReportConfirmation();
+        },
+      ),
+    );
+  }
+
+  void _showReportConfirmation() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Report Submitted'),
+        content: const Text('Thank you for your report. We will review it shortly.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBlockedUserDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.block, color: Colors.red, size: 24),
+            SizedBox(width: 8),
+            Text('Action Not Allowed'),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _submitComment() async {
@@ -942,9 +1069,15 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
       });
       
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to add comment: $e')),
-      );
+      
+      // Handle blocked user exception with user-friendly dialog
+      if (e is BlockedUserException) {
+        _showBlockedUserDialog(e.message);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to add comment: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -2316,6 +2449,379 @@ class _NutritionInfoDialogState extends State<_NutritionInfoDialog> {
   String getMineralUnit(String mineral) {
     // Most minerals are in mg
     return 'mg';
+  }
+}
+
+class _ReportDialog extends StatefulWidget {
+  final String recipeId;
+  final List<CommentModel> comments;
+  final List<String> images;
+  final VoidCallback onReportSubmitted;
+
+  const _ReportDialog({
+    required this.recipeId,
+    required this.comments,
+    required this.images,
+    required this.onReportSubmitted,
+  });
+
+  @override
+  State<_ReportDialog> createState() => _ReportDialogState();
+}
+
+class _ReportDialogState extends State<_ReportDialog> {
+  ReportType? _selectedReportType;
+  String? _selectedCommentId;
+  String? _selectedImageUrl;
+  final TextEditingController _commentController = TextEditingController();
+  final _reportService = ReportService();
+  bool _isSubmitting = false;
+  static const int _maxCommentLength = 255;
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitReport() async {
+    if (_selectedReportType == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a report type'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Validate selection for comment/image reports
+    if (_selectedReportType == ReportType.comment && _selectedCommentId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a comment to report'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedReportType == ReportType.image && _selectedImageUrl == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select an image to report'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_commentController.text.length > _maxCommentLength) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Comment must be ${_maxCommentLength} characters or less'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      await _reportService.reportRecipe(
+        recipeId: widget.recipeId,
+        reportType: _selectedReportType!,
+        comment: _commentController.text.trim().isEmpty 
+            ? null 
+            : _commentController.text.trim(),
+        commentId: _selectedCommentId,
+        imageUrl: _selectedImageUrl,
+      );
+
+      if (mounted) {
+        widget.onReportSubmitted();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to submit report: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 400),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Report Recipe',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Please select a reason for reporting this recipe',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Report type selection
+            ...ReportType.values.map((type) {
+              String label;
+              switch (type) {
+                case ReportType.image:
+                  label = 'Image';
+                  break;
+                case ReportType.titleDescriptionIngredientsInstructions:
+                  label = 'Title/Description/Ingredients/Instructions';
+                  break;
+                case ReportType.creatorProfile:
+                  label = 'Creator profile';
+                  break;
+                case ReportType.comment:
+                  label = 'Comment';
+                  break;
+              }
+
+              return RadioListTile<ReportType>(
+                title: Text(label),
+                value: type,
+                groupValue: _selectedReportType,
+                onChanged: (value) {
+                  setState(() {
+                    _selectedReportType = value;
+                    // Clear selections when changing report type
+                    _selectedCommentId = null;
+                    _selectedImageUrl = null;
+                  });
+                },
+                contentPadding: EdgeInsets.zero,
+              );
+            }),
+            const SizedBox(height: 16),
+            
+            // Show comment selection if Comment report type is selected
+            if (_selectedReportType == ReportType.comment) ...[
+              const Text(
+                'Select the comment to report:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 200),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: widget.comments.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text(
+                          'No comments available',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: widget.comments.length,
+                        itemBuilder: (context, index) {
+                          final comment = widget.comments[index];
+                          return RadioListTile<String>(
+                            title: Text(
+                              comment.content.length > 50
+                                  ? '${comment.content.substring(0, 50)}...'
+                                  : comment.content,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            subtitle: Text(
+                              'by ${comment.username ?? 'Unknown'}',
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                            value: comment.id,
+                            groupValue: _selectedCommentId,
+                            onChanged: (value) {
+                              setState(() => _selectedCommentId = value);
+                            },
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                          );
+                        },
+                      ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            
+            // Show image selection if Image report type is selected
+            if (_selectedReportType == ReportType.image) ...[
+              const Text(
+                'Select the image to report:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 200),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: widget.images.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text(
+                          'No images available',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      )
+                    : GridView.builder(
+                        shrinkWrap: true,
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                          childAspectRatio: 1,
+                        ),
+                        padding: const EdgeInsets.all(8),
+                        itemCount: widget.images.length,
+                        itemBuilder: (context, index) {
+                          final imageUrl = widget.images[index];
+                          final isSelected = _selectedImageUrl == imageUrl;
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() => _selectedImageUrl = imageUrl);
+                            },
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(
+                                    imageUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        color: Colors.grey[300],
+                                        child: const Icon(
+                                          Icons.broken_image,
+                                          color: Colors.grey,
+                                        ),
+                                      );
+                                    },
+                                    loadingBuilder: (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
+                                      return Container(
+                                        color: Colors.grey[200],
+                                        child: Center(
+                                          child: CircularProgressIndicator(
+                                            value: loadingProgress.expectedTotalBytes != null
+                                                ? loadingProgress.cumulativeBytesLoaded /
+                                                    loadingProgress.expectedTotalBytes!
+                                                : null,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                if (isSelected)
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                        color: Colors.blue,
+                                        width: 3,
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                if (isSelected)
+                                  const Positioned(
+                                    top: 4,
+                                    right: 4,
+                                    child: Icon(
+                                      Icons.check_circle,
+                                      color: Colors.blue,
+                                      size: 24,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            
+            // Optional comment field
+            TextField(
+              controller: _commentController,
+              decoration: InputDecoration(
+                labelText: 'Additional comments (optional)',
+                hintText: 'Provide more details...',
+                border: const OutlineInputBorder(),
+                counterText: '${_commentController.text.length}/$_maxCommentLength',
+              ),
+              maxLines: 4,
+              maxLength: _maxCommentLength,
+              onChanged: (value) {
+                setState(() {}); // Update character count
+              },
+            ),
+            const SizedBox(height: 24),
+            // Submit button
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _isSubmitting ? null : _submitReport,
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Submit Report'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

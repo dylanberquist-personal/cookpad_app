@@ -2,14 +2,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/recipe_model.dart';
 import '../models/user_model.dart';
+import '../models/blocked_user_exception.dart';
 import 'collection_service.dart';
 import 'notification_service.dart';
 import '../models/notification_model.dart';
+import 'block_service.dart';
 
 class RecipeServiceSupabase {
   final _supabase = SupabaseConfig.client;
   final _collectionService = CollectionService();
   final _notificationService = NotificationService();
+  final _blockService = BlockService();
 
   Future<List<RecipeModel>> getRecipes({
     String? userId,
@@ -39,9 +42,18 @@ class RecipeServiceSupabase {
 
     final response = await sortedQuery.range(offset, offset + limit - 1);
 
-    final recipes = (response as List)
+    var recipes = (response as List)
         .map((json) => _recipeFromSupabaseJson(json))
         .toList();
+
+    // Filter out recipes from blocked users
+    final currentUserId = _supabase.auth.currentUser?.id;
+    if (currentUserId != null) {
+      final blockedUserIds = await _blockService.getBlockedUserIds();
+      if (blockedUserIds.isNotEmpty) {
+        recipes = recipes.where((recipe) => !blockedUserIds.contains(recipe.userId)).toList();
+      }
+    }
 
     // Fetch images for all recipes in batch
     if (recipes.isNotEmpty) {
@@ -342,7 +354,19 @@ class RecipeServiceSupabase {
   Future<RecipeModel> updateRecipe(RecipeModel recipe) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
-    if (recipe.userId != userId) throw Exception('Unauthorized');
+
+    // Only recipe owner can update
+    if (recipe.userId != userId) {
+      // Check if recipe owner has blocked current user
+      final isBlockedBy = await _blockService.isBlockedBy(recipe.userId);
+      if (isBlockedBy) {
+        throw BlockedUserException(
+          action: 'update',
+          message: 'You cannot update this recipe because the creator has blocked you.',
+        );
+      }
+      throw Exception('Unauthorized: Only recipe owner can update');
+    }
 
     final recipeData = {
       'title': recipe.title,
@@ -390,6 +414,18 @@ class RecipeServiceSupabase {
     // Verify recipe exists
     final recipe = await getRecipeById(recipeId);
     if (recipe == null) throw Exception('Recipe not found');
+
+    // Check if recipe owner has blocked current user
+    final recipeOwnerId = recipe.userId;
+    if (recipeOwnerId != userId) {
+      final isBlockedBy = await _blockService.isBlockedBy(recipeOwnerId);
+      if (isBlockedBy) {
+        throw BlockedUserException(
+          action: 'add image',
+          message: 'You cannot add images to this recipe because the creator has blocked you.',
+        );
+      }
+    }
 
     // Get current image count to determine order
     final existingImages = await _supabase
@@ -499,6 +535,21 @@ class RecipeServiceSupabase {
         print('Warning: Failed to sync with Favorites collection: $e');
       }
     } else {
+      // Check if recipe owner has blocked current user before adding to favorites
+      final recipe = await _supabase
+          .from('recipes')
+          .select('user_id')
+          .eq('id', recipeId)
+          .single();
+      final recipeOwnerId = recipe['user_id'] as String;
+      final isBlockedBy = await _blockService.isBlockedBy(recipeOwnerId);
+      if (isBlockedBy) {
+        throw BlockedUserException(
+          action: 'favorite',
+          message: 'You cannot favorite this recipe because the creator has blocked you.',
+        );
+      }
+
       // Add to favorites
       await _supabase.from('favorites').insert({
         'user_id': userId,
@@ -523,7 +574,7 @@ class RecipeServiceSupabase {
         print('Warning: Failed to sync with Favorites collection: $e');
       }
 
-      // Create notification for recipe owner
+      // Create notification for recipe owner (only if not blocked)
       try {
         final recipe = await _supabase
             .from('recipes')
@@ -533,12 +584,16 @@ class RecipeServiceSupabase {
 
         final recipeOwnerId = recipe['user_id'] as String;
         if (recipeOwnerId != userId) {
-          await _notificationService.createNotification(
-            recipientUserId: recipeOwnerId,
-            type: NotificationType.recipeFavorited,
-            actorId: userId,
-            recipeId: recipeId,
-          );
+          // Check if recipe owner has blocked current user
+          final isBlockedBy = await _blockService.isBlockedBy(recipeOwnerId);
+          if (!isBlockedBy) {
+            await _notificationService.createNotification(
+              recipientUserId: recipeOwnerId,
+              type: NotificationType.recipeFavorited,
+              actorId: userId,
+              recipeId: recipeId,
+            );
+          }
         }
       } catch (e) {
         print('Error creating notification for favorite: $e');
@@ -551,6 +606,21 @@ class RecipeServiceSupabase {
     if (userId == null) throw Exception('User not authenticated');
 
     if (rating < 1 || rating > 5) throw Exception('Rating must be between 1 and 5');
+
+    // Check if recipe owner has blocked current user
+    final recipe = await _supabase
+        .from('recipes')
+        .select('user_id')
+        .eq('id', recipeId)
+        .single();
+    final recipeOwnerId = recipe['user_id'] as String;
+    final isBlockedBy = await _blockService.isBlockedBy(recipeOwnerId);
+    if (isBlockedBy) {
+      throw BlockedUserException(
+        action: 'rate',
+        message: 'You cannot rate this recipe because the creator has blocked you.',
+      );
+    }
 
     // Check if this is a new rating or update
     final existingRating = await _supabase
@@ -580,12 +650,16 @@ class RecipeServiceSupabase {
 
         final recipeOwnerId = recipe['user_id'] as String;
         if (recipeOwnerId != userId) {
-          await _notificationService.createNotification(
-            recipientUserId: recipeOwnerId,
-            type: NotificationType.recipeRated,
-            actorId: userId,
-            recipeId: recipeId,
-          );
+          // Check if recipe owner has blocked current user
+          final isBlockedBy = await _blockService.isBlockedBy(recipeOwnerId);
+          if (!isBlockedBy) {
+            await _notificationService.createNotification(
+              recipientUserId: recipeOwnerId,
+              type: NotificationType.recipeRated,
+              actorId: userId,
+              recipeId: recipeId,
+            );
+          }
         }
       } catch (e) {
         print('Error creating notification for rating: $e');
@@ -613,9 +687,15 @@ class RecipeServiceSupabase {
         .select('*, user:users!user_id(*)')
         .inFilter('id', recipeIds);
 
-    final recipes = (recipesResponse as List)
+    var recipes = (recipesResponse as List)
         .map((json) => _recipeFromSupabaseJson(json))
         .toList();
+
+    // Filter out recipes from blocked users
+    final blockedUserIds = await _blockService.getBlockedUserIds();
+    if (blockedUserIds.isNotEmpty) {
+      recipes = recipes.where((recipe) => !blockedUserIds.contains(recipe.userId)).toList();
+    }
 
     // Fetch images for all recipes in batch
     if (recipes.isNotEmpty) {
@@ -725,9 +805,17 @@ class RecipeServiceSupabase {
     
     final response = uniqueRecipes.values.toList();
 
-    final recipes = response
+    var recipes = response
         .map((json) => _recipeFromSupabaseJson(json as Map<String, dynamic>))
         .toList();
+
+    // Filter out recipes from blocked users
+    if (currentUserId != null) {
+      final blockedUserIds = await _blockService.getBlockedUserIds();
+      if (blockedUserIds.isNotEmpty) {
+        recipes = recipes.where((recipe) => !blockedUserIds.contains(recipe.userId)).toList();
+      }
+    }
 
     // Fetch images for all recipes in batch
     if (recipes.isNotEmpty) {

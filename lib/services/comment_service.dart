@@ -1,12 +1,15 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/comment_model.dart';
+import '../models/blocked_user_exception.dart';
 import 'notification_service.dart';
 import '../models/notification_model.dart';
+import 'block_service.dart';
 
 class CommentService {
   final SupabaseClient _supabase = SupabaseConfig.client;
   final _notificationService = NotificationService();
+  final _blockService = BlockService();
 
   Future<List<CommentModel>> listComments(String recipeId, {String? currentUserId}) async {
     final response = await _supabase
@@ -15,9 +18,17 @@ class CommentService {
         .eq('recipe_id', recipeId)
         .order('created_at', ascending: true);
 
-    final comments = (response as List)
+    var comments = (response as List)
         .map((json) => CommentModel.fromJson(json))
         .toList();
+
+    // Filter out comments from blocked users
+    if (currentUserId != null) {
+      final blockedUserIds = await _blockService.getBlockedUserIds();
+      if (blockedUserIds.isNotEmpty) {
+        comments = comments.where((comment) => !blockedUserIds.contains(comment.userId)).toList();
+      }
+    }
 
     // Fetch favorite status for each comment if user is authenticated
     if (currentUserId != null && comments.isNotEmpty) {
@@ -89,6 +100,21 @@ class CommentService {
     // Ensure user exists in users table
     await _ensureUserExists(userId);
 
+    // Check if recipe owner has blocked current user
+    final recipe = await _supabase
+        .from('recipes')
+        .select('user_id')
+        .eq('id', recipeId)
+        .single();
+    final recipeOwnerId = recipe['user_id'] as String;
+    final isBlockedBy = await _blockService.isBlockedBy(recipeOwnerId);
+    if (isBlockedBy) {
+      throw BlockedUserException(
+        action: 'comment',
+        message: 'You cannot comment on this recipe because the creator has blocked you.',
+      );
+    }
+
     final insert = {
       'user_id': userId,
       'recipe_id': recipeId,
@@ -114,13 +140,17 @@ class CommentService {
 
       final recipeOwnerId = recipe['user_id'] as String;
       if (recipeOwnerId != userId) {
-        await _notificationService.createNotification(
-          recipientUserId: recipeOwnerId,
-          type: NotificationType.comment,
-          actorId: userId,
-          recipeId: recipeId,
-          commentId: comment.id,
-        );
+        // Check if recipe owner has blocked current user
+        final isBlockedBy = await _blockService.isBlockedBy(recipeOwnerId);
+        if (!isBlockedBy) {
+          await _notificationService.createNotification(
+            recipientUserId: recipeOwnerId,
+            type: NotificationType.comment,
+            actorId: userId,
+            recipeId: recipeId,
+            commentId: comment.id,
+          );
+        }
       }
     } catch (e) {
       // Don't fail comment creation if notification fails

@@ -1,9 +1,11 @@
 import '../config/supabase_config.dart';
 import '../models/notification_model.dart';
 import '../models/user_model.dart';
+import 'block_service.dart';
 
 class NotificationService {
   final _supabase = SupabaseConfig.client;
+  final _blockService = BlockService();
   
   // Rate limiting: 5 notifications per minute per user
   static const int _maxNotificationsPerMinute = 5;
@@ -44,6 +46,12 @@ class NotificationService {
     final currentUserId = _supabase.auth.currentUser?.id;
     if (currentUserId == null || recipientUserId == currentUserId) {
       return;
+    }
+
+    // Check if recipient has blocked the actor
+    final isBlocked = await _blockService.isBlockedBy(recipientUserId);
+    if (isBlocked) {
+      return; // Don't create notification if recipient has blocked the actor
     }
 
     // Rate limiting check
@@ -132,9 +140,17 @@ class NotificationService {
         .order('created_at', ascending: false)
         .range(offset, offset + limit - 1);
 
-    final notifications = (response as List)
+    var notifications = (response as List)
         .map((json) => _notificationFromSupabaseJson(json))
         .toList();
+
+    // Filter out notifications from blocked users
+    final blockedUserIds = await _blockService.getBlockedUserIds();
+    if (blockedUserIds.isNotEmpty) {
+      notifications = notifications.where((notification) {
+        return notification.actorId == null || !blockedUserIds.contains(notification.actorId);
+      }).toList();
+    }
 
     // Fetch recipe titles for recipe-related notifications
     final recipeIds = notifications

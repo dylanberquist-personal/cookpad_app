@@ -53,6 +53,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
   bool _isFollowing = false;
   bool _isTogglingFollow = false;
   bool _isBlockedBy = false;
+  bool _hasBlocked = false;
   Color? _bannerColor;
   int _currentNavIndex = 4; // Profile is index 4
   List<RecipeModel> _publicRecipes = [];
@@ -131,6 +132,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
       if (!_isOwner) {
         await _checkFollowStatus();
         await _checkBlockStatus();
+        await _checkHasBlocked();
       }
 
       // Load public recipes
@@ -254,6 +256,17 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
       });
     } catch (e) {
       print('Error checking block status: $e');
+    }
+  }
+
+  Future<void> _checkHasBlocked() async {
+    try {
+      final hasBlocked = await _blockService.isBlocked(widget.userId);
+      setState(() {
+        _hasBlocked = hasBlocked;
+      });
+    } catch (e) {
+      print('Error checking if user is blocked: $e');
     }
   }
 
@@ -1177,29 +1190,6 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                   ],
                   ],
                   const SizedBox(height: 24),
-                  
-                  // Block User Button (only show if not owner and not blocked)
-                  if (!_isOwner && !_isBlockedBy) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _showBlockDialog,
-                        icon: const Icon(Icons.block, color: Colors.red),
-                        label: const Text(
-                          'Block User',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: const BorderSide(color: Colors.red),
-                          ),
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 24),
-                  ],
                 ],
               ),
             ),
@@ -1323,6 +1313,38 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
                 ),
               ),
               ],
+            ],
+            
+            // Block/Unblock Button (only show if not owner and not blocked by)
+            if (!_isOwner && !_isBlockedBy) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _showBlockDialog,
+                    icon: Icon(
+                      _hasBlocked ? Icons.block_outlined : Icons.block,
+                      color: _hasBlocked ? Colors.green : Colors.red,
+                    ),
+                    label: Text(
+                      _hasBlocked ? 'Unblock User' : 'Block User',
+                      style: TextStyle(
+                        color: _hasBlocked ? Colors.green : Colors.red,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: _hasBlocked ? Colors.green : Colors.red,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ],
         ),
@@ -1649,9 +1671,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
   Future<void> _showBlockDialog() async {
     if (_isOwner) return;
 
-    final isBlocked = await _blockService.isBlocked(widget.userId);
-
-    if (isBlocked) {
+    if (_hasBlocked) {
       // Show unblock dialog
       final confirmed = await showDialog<bool>(
         context: context,
@@ -1681,6 +1701,9 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
         try {
           await _blockService.unblockUser(widget.userId);
           if (mounted) {
+            setState(() {
+              _hasBlocked = false;
+            });
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('User unblocked successfully'),
@@ -1731,6 +1754,9 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
         try {
           await _blockService.blockUser(widget.userId);
           if (mounted) {
+            setState(() {
+              _hasBlocked = true;
+            });
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('User blocked successfully'),

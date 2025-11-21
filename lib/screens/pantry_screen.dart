@@ -25,11 +25,23 @@ class _PantryScreenState extends State<PantryScreen> {
   Map<String, List<PantryItemModel>> _itemsByCategory = {};
   String _selectedCategory = 'All';
   List<Map<String, dynamic>> _pendingInvites = [];
+  final _itemNameController = TextEditingController();
+  String? _editingItemId;
+  final Map<String, TextEditingController> _editControllers = {};
 
   @override
   void initState() {
     super.initState();
     _loadPreferences();
+  }
+
+  @override
+  void dispose() {
+    _itemNameController.dispose();
+    for (final controller in _editControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> _loadPreferences() async {
@@ -172,265 +184,133 @@ class _PantryScreenState extends State<PantryScreen> {
     }
   }
 
-  Future<void> _showAddItemDialog() async {
-    final nameController = TextEditingController();
-    final quantityController = TextEditingController();
-    String? selectedCategory;
+  Future<void> _addItem() async {
+    final itemName = _itemNameController.text.trim();
+    if (itemName.isEmpty) return;
 
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text('Add Pantry Item'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Ingredient Name',
-                      hintText: 'e.g., Tomatoes',
-                      border: OutlineInputBorder(),
-                    ),
-                    autofocus: true,
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: quantityController,
-                    decoration: const InputDecoration(
-                      labelText: 'Quantity (Optional)',
-                      hintText: 'e.g., 2 lbs',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    decoration: const InputDecoration(
-                      labelText: 'Category (Optional)',
-                      border: OutlineInputBorder(),
-                    ),
-                    value: selectedCategory,
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('None')),
-                      ...PantryService.getCommonCategories().map(
-                        (category) => DropdownMenuItem(
-                          value: category,
-                          child: Text(category),
-                        ),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      setDialogState(() {
-                        selectedCategory = value;
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (nameController.text.trim().isNotEmpty) {
-                    Navigator.pop(context, {
-                      'name': nameController.text.trim(),
-                      'quantity': quantityController.text.trim().isEmpty
-                          ? null
-                          : quantityController.text.trim(),
-                      'category': selectedCategory,
-                    });
-                  }
-                },
-                child: const Text('Add'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-
-    if (result != null) {
-      try {
-        await _pantryService.addPantryItem(
-          ingredientName: result['name'] as String,
-          category: result['category'] as String?,
-          quantity: result['quantity'] as String?,
+    try {
+      await _pantryService.addPantryItem(
+        ingredientName: itemName,
+      );
+      await _loadPantryItems();
+      _itemNameController.clear();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Item added successfully'),
+            backgroundColor: Colors.green,
+          ),
         );
-        await _loadPantryItems();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Item added successfully'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error adding item: $e')),
-          );
-        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error adding item: $e')),
+        );
       }
     }
   }
 
-  Future<void> _showEditItemDialog(PantryItemModel item) async {
-    final nameController = TextEditingController(text: item.ingredientName);
-    final quantityController = TextEditingController(text: item.quantity ?? '');
-    String? selectedCategory = item.category;
-
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text('Edit Pantry Item'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Ingredient Name',
-                      border: OutlineInputBorder(),
-                    ),
-                    autofocus: true,
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: quantityController,
-                    decoration: const InputDecoration(
-                      labelText: 'Quantity (Optional)',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    decoration: const InputDecoration(
-                      labelText: 'Category (Optional)',
-                      border: OutlineInputBorder(),
-                    ),
-                    value: selectedCategory,
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('None')),
-                      ...PantryService.getCommonCategories().map(
-                        (category) => DropdownMenuItem(
-                          value: category,
-                          child: Text(category),
-                        ),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      setDialogState(() {
-                        selectedCategory = value;
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (nameController.text.trim().isNotEmpty) {
-                    Navigator.pop(context, {
-                      'name': nameController.text.trim(),
-                      'quantity': quantityController.text.trim().isEmpty
-                          ? null
-                          : quantityController.text.trim(),
-                      'category': selectedCategory,
-                    });
-                  }
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-
-    if (result != null) {
-      try {
-        await _pantryService.updatePantryItem(
-          id: item.id,
-          ingredientName: result['name'] as String,
-          category: result['category'] as String?,
-          quantity: result['quantity'] as String?,
-        );
-        await _loadPantryItems();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Item updated successfully'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error updating item: $e')),
-          );
-        }
+  void _startEditingItem(PantryItemModel item) {
+    setState(() {
+      _editingItemId = item.id;
+      // Create a controller with the current item name if it doesn't exist
+      if (!_editControllers.containsKey(item.id)) {
+        _editControllers[item.id] = TextEditingController(text: item.ingredientName);
       }
+    });
+  }
+
+  Future<void> _saveEditingItem(PantryItemModel item) async {
+    final controller = _editControllers[item.id];
+    if (controller == null) return;
+
+    final newName = controller.text.trim();
+    if (newName.isEmpty) {
+      // If empty, don't save and just cancel editing
+      setState(() {
+        _editingItemId = null;
+      });
+      return;
     }
+
+    if (newName == item.ingredientName) {
+      // No change, just cancel editing
+      setState(() {
+        _editingItemId = null;
+      });
+      return;
+    }
+
+    try {
+      await _pantryService.updatePantryItem(
+        id: item.id,
+        ingredientName: newName,
+        category: item.category,
+        quantity: item.quantity,
+      );
+      await _loadPantryItems();
+      setState(() {
+        _editingItemId = null;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Item updated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating item: $e')),
+        );
+      }
+      setState(() {
+        _editingItemId = null;
+      });
+    }
+  }
+
+  void _cancelEditingItem() {
+    setState(() {
+      _editingItemId = null;
+    });
   }
 
   Future<void> _deleteItem(PantryItemModel item) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Item'),
-        content: Text('Are you sure you want to delete "${item.ingredientName}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      try {
-        await _pantryService.deletePantryItem(item.id);
-        await _loadPantryItems();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Item deleted successfully'),
-              backgroundColor: Colors.green,
-            ),
-          );
+    try {
+      await _pantryService.deletePantryItem(item.id);
+      
+      // Update locally without full refresh to prevent Dismissible errors
+      setState(() {
+        final updatedCategories = <String, List<PantryItemModel>>{};
+        for (final entry in _itemsByCategory.entries) {
+          final updatedItems = entry.value.where((i) => i.id != item.id).toList();
+          if (updatedItems.isNotEmpty) {
+            updatedCategories[entry.key] = updatedItems;
+          }
         }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error deleting item: $e')),
-          );
-        }
+        _itemsByCategory = updatedCategories;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Item deleted'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting item: $e')),
+        );
+      }
+      // Reload on error to restore correct state
+      _loadPantryItems();
     }
   }
 
@@ -909,11 +789,6 @@ class _PantryScreenState extends State<PantryScreen> {
                 ),
               ],
             ),
-            IconButton(
-              icon: const Icon(Icons.add),
-              onPressed: _showAddItemDialog,
-              tooltip: 'Add Item',
-            ),
           ],
         ],
       ),
@@ -971,167 +846,198 @@ class _PantryScreenState extends State<PantryScreen> {
           // Pantry Content
           if (_isEnabled)
             Expanded(
-              child: _itemsByCategory.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.kitchen,
-                            size: 64,
-                            color: isDark ? Colors.grey.shade600 : Colors.grey.shade400,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Your pantry is empty',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Add items manually or import from text/image',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : Column(
+              child: Column(
+                children: [
+                  // Add item input
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
                       children: [
-                        // Category Filter
-                        if (_itemsByCategory.length > 1)
-                          Container(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Row(
-                                children: [
-                                  _CategoryChip(
-                                    label: 'All',
-                                    isSelected: _selectedCategory == 'All',
-                                    onTap: () {
-                                      setState(() {
-                                        _selectedCategory = 'All';
-                                      });
-                                    },
-                                  ),
-                                  ..._itemsByCategory.keys.map(
-                                    (category) => _CategoryChip(
-                                      label: category,
-                                      isSelected: _selectedCategory == category,
-                                      onTap: () {
-                                        setState(() {
-                                          _selectedCategory = category;
-                                        });
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        // Pending Invites Section
-                        if (_pendingInvites.isNotEmpty) ...[
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                            child: Text(
-                              'Pending Sync Invites',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white : Colors.black87,
-                              ),
-                            ),
-                          ),
-                          ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemCount: _pendingInvites.length,
-                            itemBuilder: (context, index) {
-                              final invite = _pendingInvites[index];
-                              final sender = invite['sender'] as Map<String, dynamic>;
-                              
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundImage: sender['profile_picture_url'] != null
-                                        ? NetworkImage(sender['profile_picture_url'] as String)
-                                        : null,
-                                    child: sender['profile_picture_url'] == null
-                                        ? const Icon(Icons.person)
-                                        : null,
-                                  ),
-                                  title: Text(
-                                    '${sender['username']} wants to sync',
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                  subtitle: const Text('Sync your pantries together'),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.check, color: Colors.green),
-                                        onPressed: () => _acceptPantryInvite(invite),
-                                        tooltip: 'Accept',
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.close, color: Colors.red),
-                                        onPressed: () => _declinePantryInvite(invite),
-                                        tooltip: 'Decline',
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                        // Items List
                         Expanded(
-                          child: RefreshIndicator(
-                            onRefresh: () async {
-                              await _loadPantryItems();
-                              await _loadPendingInvites();
-                            },
-                            child: ListView.separated(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              itemCount: _filteredItems.length,
-                              separatorBuilder: (context, index) => Divider(
-                                height: 1,
-                                thickness: 1,
-                                color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
-                                indent: 16,
-                                endIndent: 16,
-                              ),
-                              itemBuilder: (context, index) {
-                                final item = _filteredItems[index];
-                                return _PantryItemTile(
-                                  item: item,
-                                  onEdit: () => _showEditItemDialog(item),
-                                  onDelete: () => _deleteItem(item),
-                                );
-                              },
+                          child: TextField(
+                            controller: _itemNameController,
+                            decoration: const InputDecoration(
+                              hintText: 'Add item...',
+                              border: OutlineInputBorder(),
                             ),
+                            onSubmitted: (_) => _addItem(),
                           ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle),
+                          onPressed: _addItem,
+                          tooltip: 'Add Item',
                         ),
                       ],
                     ),
-          ),
+                  ),
+                  // Main content
+                  Expanded(
+                    child: _itemsByCategory.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.kitchen,
+                                  size: 64,
+                                  color: isDark ? Colors.grey.shade600 : Colors.grey.shade400,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Your pantry is empty',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Add items manually or import from text/image',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : Column(
+                            children: [
+                              // Category Filter
+                              if (_itemsByCategory.length > 1)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    child: Row(
+                                      children: [
+                                        _CategoryChip(
+                                          label: 'All',
+                                          isSelected: _selectedCategory == 'All',
+                                          onTap: () {
+                                            setState(() {
+                                              _selectedCategory = 'All';
+                                            });
+                                          },
+                                        ),
+                                        ..._itemsByCategory.keys.map(
+                                          (category) => _CategoryChip(
+                                            label: category,
+                                            isSelected: _selectedCategory == category,
+                                            onTap: () {
+                                              setState(() {
+                                                _selectedCategory = category;
+                                              });
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              // Pending Invites Section
+                              if (_pendingInvites.isNotEmpty) ...[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                                  child: Text(
+                                    'Pending Sync Invites',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark ? Colors.white : Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                                ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  itemCount: _pendingInvites.length,
+                                  itemBuilder: (context, index) {
+                                    final invite = _pendingInvites[index];
+                                    final sender = invite['sender'] as Map<String, dynamic>;
+                                    
+                                    return Card(
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      child: ListTile(
+                                        leading: CircleAvatar(
+                                          backgroundImage: sender['profile_picture_url'] != null
+                                              ? NetworkImage(sender['profile_picture_url'] as String)
+                                              : null,
+                                          child: sender['profile_picture_url'] == null
+                                              ? const Icon(Icons.person)
+                                              : null,
+                                        ),
+                                        title: Text(
+                                          '${sender['username']} wants to sync',
+                                          style: const TextStyle(fontWeight: FontWeight.bold),
+                                        ),
+                                        subtitle: const Text('Sync your pantries together'),
+                                        trailing: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            IconButton(
+                                              icon: const Icon(Icons.check, color: Colors.green),
+                                              onPressed: () => _acceptPantryInvite(invite),
+                                              tooltip: 'Accept',
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.close, color: Colors.red),
+                                              onPressed: () => _declinePantryInvite(invite),
+                                              tooltip: 'Decline',
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+                              // Items List
+                              Expanded(
+                                child: RefreshIndicator(
+                                  onRefresh: () async {
+                                    await _loadPantryItems();
+                                    await _loadPendingInvites();
+                                  },
+                                  child: ListView.separated(
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                    itemCount: _filteredItems.length,
+                                    separatorBuilder: (context, index) => Divider(
+                                      height: 1,
+                                      thickness: 1,
+                                      color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
+                                      indent: 16,
+                                      endIndent: 16,
+                                    ),
+                                    itemBuilder: (context, index) {
+                                      final item = _filteredItems[index];
+                                      final isEditing = _editingItemId == item.id;
+                                      return _PantryItemTile(
+                                        item: item,
+                                        isEditing: isEditing,
+                                        editController: _editControllers[item.id],
+                                        onEdit: () => _startEditingItem(item),
+                                        onSave: () => _saveEditingItem(item),
+                                        onCancel: _cancelEditingItem,
+                                        onDelete: () => _deleteItem(item),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
-      floatingActionButton: _isEnabled
-          ? FloatingActionButton(
-              onPressed: _showAddItemDialog,
-              child: const Icon(Icons.add),
-            )
-          : null,
+      floatingActionButton: null,
       bottomNavigationBar: SizedBox(
         height: 60,
         child: NavigationBar(
@@ -1244,12 +1150,20 @@ class _CategoryChip extends StatelessWidget {
 
 class _PantryItemTile extends StatelessWidget {
   final PantryItemModel item;
+  final bool isEditing;
+  final TextEditingController? editController;
   final VoidCallback onEdit;
+  final VoidCallback onSave;
+  final VoidCallback onCancel;
   final VoidCallback onDelete;
 
   const _PantryItemTile({
     required this.item,
+    required this.isEditing,
+    required this.editController,
     required this.onEdit,
+    required this.onSave,
+    required this.onCancel,
     required this.onDelete,
   });
 
@@ -1257,10 +1171,10 @@ class _PantryItemTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    return InkWell(
-      onTap: onEdit,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    if (isEditing) {
+      // Editing mode - disable swipe to delete while editing
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
             // Low stock indicator (minimal dot)
@@ -1274,101 +1188,134 @@ class _PantryItemTile extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
               ),
-            // Item content
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    item.ingredientName,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: isDark ? Colors.grey[200] : Colors.black87,
-                    ),
+              child: TextField(
+                controller: editController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Item name',
+                  border: const OutlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
                   ),
-                  if (item.quantity != null || item.category != null) ...[
-                    const SizedBox(height: 2),
-                    Wrap(
-                      spacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        if (item.quantity != null)
-                          Text(
-                            item.quantity!,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                            ),
-                          ),
-                        if (item.category != null) ...[
-                          if (item.quantity != null)
-                            Container(
-                              width: 2,
-                              height: 2,
-                              margin: const EdgeInsets.symmetric(horizontal: 2),
-                              decoration: BoxDecoration(
-                                color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          Text(
-                            item.category!,
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            // Actions menu
-            PopupMenuButton<String>(
-              icon: Icon(
-                Icons.more_vert,
-                size: 18,
-                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'edit',
-                  child: Row(
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.edit_outlined, size: 18, color: Colors.grey.shade700),
-                      const SizedBox(width: 8),
-                      const Text('Edit'),
+                      IconButton(
+                        icon: const Icon(Icons.check, color: Colors.green),
+                        onPressed: onSave,
+                        tooltip: 'Save',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.red),
+                        onPressed: onCancel,
+                        tooltip: 'Cancel',
+                      ),
                     ],
                   ),
                 ),
-                PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete_outline, size: 18, color: Colors.red.shade400),
-                      const SizedBox(width: 8),
-                      Text('Delete', style: TextStyle(color: Colors.red.shade400)),
-                    ],
-                  ),
-                ),
-              ],
-              onSelected: (value) {
-                if (value == 'edit') {
-                  onEdit();
-                } else if (value == 'delete') {
-                  onDelete();
-                }
-              },
+                onSubmitted: (_) => onSave(),
+              ),
             ),
           ],
+        ),
+      );
+    }
+
+    // Normal display mode
+    return Dismissible(
+      key: Key(item.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 16),
+        color: Colors.red,
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      onDismissed: (direction) => onDelete(),
+      child: GestureDetector(
+        onLongPress: onEdit,
+        child: InkWell(
+          onTap: onEdit,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(
+              children: [
+                // Low stock indicator (minimal dot)
+                if (item.isLowStock)
+                  Container(
+                    width: 6,
+                    height: 6,
+                    margin: const EdgeInsets.only(right: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade400,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                // Item content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        item.ingredientName,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.grey[200] : Colors.black87,
+                        ),
+                      ),
+                      if (item.quantity != null || item.category != null) ...[
+                        const SizedBox(height: 2),
+                        Wrap(
+                          spacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (item.quantity != null)
+                              Text(
+                                item.quantity!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                ),
+                              ),
+                            if (item.category != null) ...[
+                              if (item.quantity != null)
+                                Container(
+                                  width: 2,
+                                  height: 2,
+                                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              Text(
+                                item.category!,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                // Edit hint icon
+                Icon(
+                  Icons.edit_outlined,
+                  size: 16,
+                  color: isDark ? Colors.grey.shade600 : Colors.grey.shade400,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

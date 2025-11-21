@@ -144,7 +144,6 @@ class PantryService {
         .from('pantry_items')
         .update(updateData)
         .eq('id', id)
-        .eq('user_id', userId) // Ensure user owns the item
         .select()
         .single();
 
@@ -159,8 +158,7 @@ class PantryService {
     await _supabase
         .from('pantry_items')
         .delete()
-        .eq('id', id)
-        .eq('user_id', userId); // Ensure user owns the item
+        .eq('id', id);
   }
 
   /// Delete all pantry items for the current user

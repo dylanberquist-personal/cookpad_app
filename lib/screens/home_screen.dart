@@ -5,6 +5,7 @@ import '../services/recipe_service.dart';
 import '../services/recipe_service_supabase.dart';
 import '../services/pantry_service.dart';
 import '../services/preferences_service.dart';
+import '../widgets/animated_fire_logo.dart';
 import 'recipe_detail_screen.dart';
 import 'recipe_detail_screen_new.dart';
 import 'search_screen.dart';
@@ -159,9 +160,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Cookpad',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Builder(
+          builder: (context) {
+            print('🔥🔥🔥 AppBar title Builder called');
+            return AnimatedFireLogo(
+              imagePath: 'Assets/Logo_long.png',
+              height: 32,
+            );
+          },
         ),
         actions: [
           IconButton(

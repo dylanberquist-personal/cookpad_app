@@ -5,6 +5,7 @@ import '../services/recipe_service_supabase.dart';
 import '../models/recipe_model.dart';
 import '../models/user_model.dart';
 import '../widgets/creator_profile_card.dart';
+import '../widgets/animated_fire_logo.dart';
 import 'recipe_detail_screen_new.dart';
 import 'favorites_screen.dart';
 
@@ -149,13 +150,10 @@ class _FeedScreenState extends State<FeedScreen> {
               ),
             ],
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.asset(
-              'Assets/Logo_long.png',
-              height: 32,
-              fit: BoxFit.contain,
-            ),
+          clipBehavior: Clip.none, // Allow particles to overflow
+          child: AnimatedFireLogo(
+            imagePath: 'Assets/Logo_long.png',
+            height: 32,
           ),
         ),
         actions: [

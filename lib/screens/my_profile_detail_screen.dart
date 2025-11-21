@@ -1353,6 +1353,7 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
   Widget _buildSkillLevelMeter(String skillLevel, {bool isEditing = false}) {
     final levelIndex = _skillLevels.indexOf(skillLevel);
     final progress = (levelIndex + 1) / _skillLevels.length;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     Color getLevelColor(int index) {
       switch (index) {
@@ -1418,7 +1419,9 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: List.generate(3, (index) {
                 final isActive = index <= levelIndex;
-                return Container(
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
                   width: 12,
                   height: 12,
                   decoration: BoxDecoration(
@@ -1452,21 +1455,35 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
             return Expanded(
               child: Column(
                 children: [
-                  Text(
-                    getLevelLabel(index),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    style: Theme.of(context).textTheme.bodySmall!.copyWith(
                           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected ? getLevelColor(index) : Colors.grey[600],
+                          color: isSelected ? getLevelColor(index) : (isDark ? Colors.grey[500] : Colors.grey[600]),
                           fontSize: isSelected ? 14 : 12,
                         ),
-                    textAlign: TextAlign.center,
+                    child: Text(
+                      getLevelLabel(index),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                   if (isSelected) ...[
                     const SizedBox(height: 4),
-                    Icon(
-                      Icons.check_circle,
-                      color: getLevelColor(index),
-                      size: 20,
+                    TweenAnimationBuilder<double>(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      builder: (context, value, child) {
+                        return Transform.scale(
+                          scale: value,
+                          child: Icon(
+                            Icons.check_circle,
+                            color: getLevelColor(index),
+                            size: 20,
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ],
@@ -1475,28 +1492,72 @@ class _MyProfileDetailScreenState extends State<MyProfileDetailScreen> {
           }),
         ),
         if (isEditing) ...[
-          const SizedBox(height: 16),
-          DropdownButtonFormField<String>(
-            value: skillLevel,
-            decoration: InputDecoration(
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+          const SizedBox(height: 24),
+          // Animated slider for editing
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey[850] : Colors.grey[100],
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: getLevelColor(levelIndex).withOpacity(0.3),
+                width: 2,
               ),
-              filled: true,
-              fillColor: Colors.grey[50],
-              labelText: 'Change Skill Level',
             ),
-            items: _skillLevels.map((level) {
-              return DropdownMenuItem(
-                value: level,
-                child: Text(level[0].toUpperCase() + level.substring(1)),
-              );
-            }).toList(),
-            onChanged: (value) {
-              if (value != null) {
-                setState(() => _selectedSkillLevel = value);
-              }
-            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, bottom: 8),
+                  child: Text(
+                    'Adjust your skill level',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: isDark ? Colors.grey[300] : Colors.grey[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                  ),
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 8,
+                    activeTrackColor: getLevelColor(levelIndex).withOpacity(0.8),
+                    inactiveTrackColor: isDark 
+                        ? Colors.grey[700] 
+                        : Colors.grey[300],
+                    thumbColor: getLevelColor(levelIndex),
+                    overlayColor: getLevelColor(levelIndex).withOpacity(0.2),
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 12,
+                      elevation: 4,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 24,
+                    ),
+                    activeTickMarkColor: Colors.transparent,
+                    inactiveTickMarkColor: Colors.transparent,
+                    valueIndicatorColor: getLevelColor(levelIndex),
+                    valueIndicatorTextStyle: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  child: Slider(
+                    value: levelIndex.toDouble(),
+                    min: 0,
+                    max: 2,
+                    divisions: 2,
+                    label: getLevelLabel(levelIndex),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedSkillLevel = _skillLevels[value.toInt()];
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ],

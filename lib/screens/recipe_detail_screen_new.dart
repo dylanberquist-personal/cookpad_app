@@ -210,11 +210,123 @@ class _RecipeDetailScreenNewState extends State<RecipeDetailScreenNew> {
   }
 
   Future<void> _rateRecipe(int rating) async {
+    // Store previous values for potential rollback
+    final previousUserRating = _recipe.userRating;
+    final previousAverageRating = _recipe.averageRating;
+    final previousRatingCount = _recipe.ratingCount;
+    
+    // Optimistically update userRating immediately
+    setState(() {
+      _recipe = RecipeModel(
+        id: _recipe.id,
+        userId: _recipe.userId,
+        title: _recipe.title,
+        description: _recipe.description,
+        ingredients: _recipe.ingredients,
+        instructions: _recipe.instructions,
+        prepTime: _recipe.prepTime,
+        cookTime: _recipe.cookTime,
+        totalTime: _recipe.totalTime,
+        servings: _recipe.servings,
+        difficultyLevel: _recipe.difficultyLevel,
+        cuisineType: _recipe.cuisineType,
+        mealType: _recipe.mealType,
+        nutrition: _recipe.nutrition,
+        tags: _recipe.tags,
+        sourceType: _recipe.sourceType,
+        sourceUrl: _recipe.sourceUrl,
+        isPublic: _recipe.isPublic,
+        averageRating: _recipe.averageRating,
+        ratingCount: _recipe.ratingCount,
+        favoriteCount: _recipe.favoriteCount,
+        createdAt: _recipe.createdAt,
+        updatedAt: _recipe.updatedAt,
+        imageUrls: _recipe.imageUrls,
+        isFavorite: _recipe.isFavorite,
+        userRating: rating,
+        creator: _recipe.creator,
+      );
+    });
+    
     try {
       await _recipeService.rateRecipe(_recipe.id, rating);
-      await _loadRecipe();
+      
+      // Fetch updated rating stats without reloading entire recipe
+      final updatedStats = await SupabaseConfig.client
+          .from('recipes')
+          .select('average_rating, rating_count')
+          .eq('id', _recipe.id)
+          .single();
+      
+      if (!mounted) return;
+      
+      // Update only rating-related fields
+      setState(() {
+        _recipe = RecipeModel(
+          id: _recipe.id,
+          userId: _recipe.userId,
+          title: _recipe.title,
+          description: _recipe.description,
+          ingredients: _recipe.ingredients,
+          instructions: _recipe.instructions,
+          prepTime: _recipe.prepTime,
+          cookTime: _recipe.cookTime,
+          totalTime: _recipe.totalTime,
+          servings: _recipe.servings,
+          difficultyLevel: _recipe.difficultyLevel,
+          cuisineType: _recipe.cuisineType,
+          mealType: _recipe.mealType,
+          nutrition: _recipe.nutrition,
+          tags: _recipe.tags,
+          sourceType: _recipe.sourceType,
+          sourceUrl: _recipe.sourceUrl,
+          isPublic: _recipe.isPublic,
+          averageRating: (updatedStats['average_rating'] as num?)?.toDouble() ?? _recipe.averageRating,
+          ratingCount: updatedStats['rating_count'] as int? ?? _recipe.ratingCount,
+          favoriteCount: _recipe.favoriteCount,
+          createdAt: _recipe.createdAt,
+          updatedAt: _recipe.updatedAt,
+          imageUrls: _recipe.imageUrls,
+          isFavorite: _recipe.isFavorite,
+          userRating: rating,
+          creator: _recipe.creator,
+        );
+      });
     } catch (e) {
       if (!mounted) return;
+      
+      // Revert to previous state on error
+      setState(() {
+        _recipe = RecipeModel(
+          id: _recipe.id,
+          userId: _recipe.userId,
+          title: _recipe.title,
+          description: _recipe.description,
+          ingredients: _recipe.ingredients,
+          instructions: _recipe.instructions,
+          prepTime: _recipe.prepTime,
+          cookTime: _recipe.cookTime,
+          totalTime: _recipe.totalTime,
+          servings: _recipe.servings,
+          difficultyLevel: _recipe.difficultyLevel,
+          cuisineType: _recipe.cuisineType,
+          mealType: _recipe.mealType,
+          nutrition: _recipe.nutrition,
+          tags: _recipe.tags,
+          sourceType: _recipe.sourceType,
+          sourceUrl: _recipe.sourceUrl,
+          isPublic: _recipe.isPublic,
+          averageRating: previousAverageRating,
+          ratingCount: previousRatingCount,
+          favoriteCount: _recipe.favoriteCount,
+          createdAt: _recipe.createdAt,
+          updatedAt: _recipe.updatedAt,
+          imageUrls: _recipe.imageUrls,
+          isFavorite: _recipe.isFavorite,
+          userRating: previousUserRating,
+          creator: _recipe.creator,
+        );
+      });
       
       // Handle blocked user exception with user-friendly dialog
       if (e is BlockedUserException) {

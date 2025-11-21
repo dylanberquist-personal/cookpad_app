@@ -126,23 +126,27 @@ class AiRecipeService {
       buffer.writeln();
     }
 
-    buffer.writeln('When generating recipes, ALWAYS format them in a structured way with clear sections:');
-    buffer.writeln('1. **Recipe Title**: Clear, descriptive title');
-    buffer.writeln('2. **Description**: Brief description of the recipe');
-    buffer.writeln('3. **Ingredients**: List ingredients with quantities and units (e.g., "2 cups flour", "1 tsp salt")');
-    buffer.writeln('4. **Instructions**: Numbered step-by-step instructions');
-    buffer.writeln('5. **Time**: Prep time, cook time, and total time in minutes');
-    buffer.writeln('6. **Servings**: Number of servings');
-    buffer.writeln('7. **Difficulty**: easy, medium, or hard');
-    buffer.writeln('8. **Meal Type**: breakfast, lunch, dinner, snack, or dessert');
+    buffer.writeln('CRITICAL: When generating recipes, you MUST follow this format EXACTLY:');
     buffer.writeln('');
-    buffer.writeln('IMPORTANT: Format recipes consistently with clear headers and structured sections.');
-    buffer.writeln('After the recipe text, include a JSON block with this exact structure:');
+    buffer.writeln('1. Start with a clear recipe title');
+    buffer.writeln('2. Provide a brief description');
+    buffer.writeln('3. List ingredients with quantities and units');
+    buffer.writeln('4. Provide numbered step-by-step instructions');
+    buffer.writeln('5. Include prep time, cook time, total time (in minutes)');
+    buffer.writeln('6. Specify number of servings');
+    buffer.writeln('7. Indicate difficulty level: easy, medium, or hard');
+    buffer.writeln('8. Specify meal type: breakfast, lunch, dinner, snack, or dessert');
+    buffer.writeln('');
+    buffer.writeln('MANDATORY: After your recipe description, you MUST include a JSON code block');
+    buffer.writeln('with the recipe data in this EXACT format. The JSON block is REQUIRED for');
+    buffer.writeln('the recipe to be saved. Without it, the recipe cannot be processed.');
+    buffer.writeln('');
+    buffer.writeln('The JSON block must be formatted as:');
     buffer.writeln('```json');
     buffer.writeln('{');
     buffer.writeln('  "title": "Recipe Title",');
     buffer.writeln('  "description": "Brief description",');
-    buffer.writeln('  "ingredients": [{"name": "Ingredient", "quantity": "amount", "unit": "unit"}],');
+    buffer.writeln('  "ingredients": [{"name": "Ingredient name", "quantity": "amount", "unit": "unit"}],');
     buffer.writeln('  "instructions": [{"step_number": 1, "instruction": "Step text"}],');
     buffer.writeln('  "prep_time": 0,');
     buffer.writeln('  "cook_time": 0,');
@@ -154,6 +158,14 @@ class AiRecipeService {
     buffer.writeln('  "tags": ["tag1", "tag2"]');
     buffer.writeln('}');
     buffer.writeln('```');
+    buffer.writeln('');
+    buffer.writeln('IMPORTANT RULES:');
+    buffer.writeln('- ALWAYS include the JSON block, even for simple recipes');
+    buffer.writeln('- The JSON block must be valid JSON (proper quotes, commas, brackets)');
+    buffer.writeln('- All required fields (title, ingredients, instructions) must be present');
+    buffer.writeln('- If the user asks for something that is not a recipe, politely explain');
+    buffer.writeln('  that you can only generate recipes and ask them to rephrase');
+    buffer.writeln('- If the request is unclear, ask clarifying questions before generating');
 
     return buffer.toString();
   }

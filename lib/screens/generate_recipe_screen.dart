@@ -10,12 +10,15 @@ import '../../services/auth_service.dart';
 import '../../services/pantry_service.dart';
 import '../../services/preferences_service.dart';
 import '../../services/recipe_url_parser_service.dart';
+import '../../services/collection_service.dart';
 import '../../config/supabase_config.dart';
 import '../../models/ai_chat_model.dart';
 import '../../models/recipe_model.dart';
 import '../../models/user_model.dart';
 import '../../models/pantry_item_model.dart';
+import '../../models/collection_model.dart';
 import 'recipe_detail_screen_new.dart';
+import 'collection_detail_screen.dart';
 
 class GenerateRecipeScreen extends StatefulWidget {
   final RecipeModel? remixRecipe;
@@ -40,6 +43,7 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
   final _pantryService = PantryService();
   final _preferencesService = PreferencesService();
   final _urlParserService = RecipeUrlParserService();
+  final _collectionService = CollectionService();
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final GlobalKey _dietaryButtonKey = GlobalKey(); // Key for positioning tooltip
@@ -51,6 +55,8 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
   bool _isSaving = false;
   bool _remixRecipeSent = false; // Track if remix recipe has been sent
   Map<int, Map<String, dynamic>?> _recipeDataCache = {}; // Cache parsed recipe data by message index
+  Map<int, String> _savedRecipeIds = {}; // Track saved recipe IDs by message index
+  Map<int, String?> _savedCollectionIds = {}; // Track saved collection IDs by message index
   File? _selectedImage; // Store selected image for OCR
   bool _isProcessingOCR = false; // Track OCR processing state
   bool _considerPantry = false; // Track if pantry should be considered
@@ -95,6 +101,8 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
         _currentSession = session;
         _messages = session.messages;
         _recipeDataCache = {};
+        _savedRecipeIds = {};
+        _savedCollectionIds = {};
       });
       
       // If remixRecipe is provided and hasn't been sent yet, send it as the first message
@@ -107,6 +115,9 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
       for (int i = 0; i < _messages.length; i++) {
         _parseRecipeFromMessage(i);
       }
+      
+      // Check which messages have saved recipes
+      await _loadSavedRecipes();
       
       // Now send the initial message
       if (mounted) {
@@ -220,6 +231,58 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
     }
   }
 
+  Future<void> _loadSavedRecipes() async {
+    final userId = SupabaseConfig.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      // For each recipe message, check if a recipe with matching title exists
+      for (int i = 0; i < _messages.length; i++) {
+        if (!_isRecipeMessage(i)) continue;
+        
+        final recipeData = _recipeDataCache[i];
+        if (recipeData == null) continue;
+        
+        final title = recipeData['title'] as String?;
+        if (title == null || title.isEmpty) continue;
+        
+        // Check if user has a recipe with this title created recently (within last hour)
+        // This is a heuristic to match recipes from this chat
+        final recipes = await SupabaseConfig.client
+            .from('recipes')
+            .select('id, title, created_at')
+            .eq('user_id', userId)
+            .ilike('title', title)
+            .order('created_at', ascending: false)
+            .limit(5);
+        
+        if (recipes.isNotEmpty) {
+          // Use the most recent matching recipe
+          final recipeId = recipes[0]['id'] as String;
+          _savedRecipeIds[i] = recipeId;
+          
+          // Check if this recipe is in any collection
+          final collectionRecipes = await SupabaseConfig.client
+              .from('collection_recipes')
+              .select('collection_id')
+              .eq('recipe_id', recipeId)
+              .limit(1)
+              .maybeSingle();
+          
+          if (collectionRecipes != null) {
+            _savedCollectionIds[i] = collectionRecipes['collection_id'] as String?;
+          }
+        }
+      }
+      
+      if (mounted) {
+        setState(() {}); // Trigger rebuild to update UI
+      }
+    } catch (e) {
+      print('Error loading saved recipes: $e');
+    }
+  }
+
   Future<void> _checkAndShowDietaryHint() async {
     print('Checking dietary hint...');
     print('User dietary restrictions: ${_currentUser?.dietaryRestrictions}');
@@ -316,6 +379,8 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
         _currentSession = session;
         _messages = session.messages;
         _recipeDataCache = {};
+        _savedRecipeIds = {};
+        _savedCollectionIds = {};
       });
       
       // If remixRecipe is provided and hasn't been sent yet, send it as the first message
@@ -328,6 +393,9 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
       for (int i = 0; i < _messages.length; i++) {
         _parseRecipeFromMessage(i);
       }
+      
+      // Check which messages have saved recipes
+      await _loadSavedRecipes();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -439,11 +507,15 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
         _currentSession = session;
         _messages = session.messages;
         _recipeDataCache = {};
+        _savedRecipeIds = {};
+        _savedCollectionIds = {};
       });
       // Parse all messages for recipes
       for (int i = 0; i < _messages.length; i++) {
         _parseRecipeFromMessage(i);
       }
+      // Check which messages have saved recipes
+      await _loadSavedRecipes();
       _scrollToBottom();
     } catch (e) {
       if (mounted) {
@@ -458,15 +530,19 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
     try {
       final session = await _aiService.getChatSession(sessionId);
       if (session != null) {
-        setState(() {
-          _currentSession = session;
-          _messages = session.messages;
-          _recipeDataCache = {};
-        });
-        // Parse all messages for recipes
-        for (int i = 0; i < _messages.length; i++) {
-          _parseRecipeFromMessage(i);
-        }
+      setState(() {
+        _currentSession = session;
+        _messages = session.messages;
+        _recipeDataCache = {};
+        _savedRecipeIds = {};
+        _savedCollectionIds = {};
+      });
+      // Parse all messages for recipes
+      for (int i = 0; i < _messages.length; i++) {
+        _parseRecipeFromMessage(i);
+      }
+      // Check which messages have saved recipes
+      await _loadSavedRecipes();
         _scrollToBottom();
       }
     } catch (e) {
@@ -1179,6 +1255,130 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
     }
   }
 
+  Future<void> _showSaveToCollectionDialog(int messageIndex) async {
+    if (_messages.isEmpty || _isSaving || !_isRecipeMessage(messageIndex)) return;
+
+    // First, ensure the recipe is saved
+    if (!_savedRecipeIds.containsKey(messageIndex)) {
+      // Show a dialog asking if they want to save the recipe first
+      final shouldSave = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Save Recipe First'),
+          content: const Text('You need to save the recipe before adding it to a collection. Would you like to save it now?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Save Recipe'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldSave == true) {
+        // Save the recipe first (with default settings)
+        await _saveRecipe(
+          messageIndex: messageIndex,
+          isPublic: true,
+          images: [],
+        );
+        // If save failed, return
+        if (!_savedRecipeIds.containsKey(messageIndex)) {
+          return;
+        }
+      } else {
+        return;
+      }
+    }
+
+    final recipeId = _savedRecipeIds[messageIndex];
+    if (recipeId == null) return;
+
+    try {
+      final userId = SupabaseConfig.client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // Get user's collections
+      final collections = await _collectionService.getUserCollections(userId);
+      
+      // Check which collections already contain this recipe
+      final collectionsWithRecipe = <String>{};
+      for (var collection in collections) {
+        final hasRecipe = await _collectionService.isRecipeInCollection(collection.id, recipeId);
+        if (hasRecipe) {
+          collectionsWithRecipe.add(collection.id);
+        }
+      }
+
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (context) => _AddToCollectionDialog(
+          collections: collections,
+          recipeId: recipeId,
+          collectionsWithRecipe: collectionsWithRecipe,
+          onCollectionSelected: (collectionId) async {
+            try {
+              await _collectionService.addRecipeToCollection(collectionId, recipeId);
+              if (mounted) {
+                setState(() {
+                  _savedCollectionIds[messageIndex] = collectionId;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Recipe added to collection!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error: ${e.toString()}')),
+                );
+              }
+            }
+          },
+          onCollectionRemoved: (collectionId) async {
+            try {
+              await _collectionService.removeRecipeFromCollection(collectionId, recipeId);
+              if (mounted) {
+                setState(() {
+                  if (_savedCollectionIds[messageIndex] == collectionId) {
+                    _savedCollectionIds[messageIndex] = null;
+                  }
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Recipe removed from collection'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error: ${e.toString()}')),
+                );
+              }
+            }
+          },
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading collections: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
   Future<void> _saveRecipe({
     required int messageIndex,
     required bool isPublic,
@@ -1281,18 +1481,23 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
         originalRecipeId: widget.remixRecipe?.id,
       );
 
-      // Update chat session with recipe ID
+      // Track saved recipe per message index (not per session)
+      setState(() {
+        _savedRecipeIds[messageIndex] = savedRecipe.id;
+      });
+
+      // Update chat session (but don't set recipeId - we track per message now)
       if (_currentSession != null) {
         await _aiService.updateChatSession(
           sessionId: _currentSession!.id,
           messages: _messages,
-          recipeId: savedRecipe.id,
+          recipeId: null, // Don't set session-level recipeId anymore
         );
         setState(() {
           _currentSession = AiChatSessionModel(
             id: _currentSession!.id,
             userId: _currentSession!.userId,
-            recipeId: savedRecipe.id,
+            recipeId: null, // Don't track at session level
             messages: _currentSession!.messages,
             createdAt: _currentSession!.createdAt,
             updatedAt: DateTime.now(),
@@ -1322,11 +1527,12 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
     }
   }
 
-  Future<void> _viewRecipe() async {
-    if (_currentSession?.recipeId == null) return;
+  Future<void> _viewRecipe(int messageIndex) async {
+    final recipeId = _savedRecipeIds[messageIndex];
+    if (recipeId == null) return;
 
     try {
-      final recipe = await _recipeService.getRecipeById(_currentSession!.recipeId!);
+      final recipe = await _recipeService.getRecipeById(recipeId);
       if (recipe != null && mounted) {
         Navigator.push(
           context,
@@ -1339,6 +1545,41 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading recipe: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _viewCollection(int messageIndex) async {
+    final collectionId = _savedCollectionIds[messageIndex];
+    if (collectionId == null) return;
+
+    try {
+      // Fetch the collection to get its details
+      final userId = SupabaseConfig.client.auth.currentUser?.id;
+      if (userId == null) return;
+      
+      final collections = await _collectionService.getUserCollections(userId);
+      final collection = collections.firstWhere(
+        (c) => c.id == collectionId,
+        orElse: () => throw Exception('Collection not found'),
+      );
+
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => CollectionDetailScreen(
+              collection: collection,
+              isOwner: true, // User owns their own collections
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading collection: ${e.toString()}')),
         );
       }
     }
@@ -1432,13 +1673,18 @@ class _GenerateRecipeScreenState extends State<GenerateRecipeScreen> with Widget
                       final message = _messages[index];
                       final isRecipe = _isRecipeMessage(index);
                       final isUserMessage = message.role == 'user';
+                      final isSaved = _savedRecipeIds.containsKey(index) && !isUserMessage;
+                      final savedCollectionId = _savedCollectionIds[index];
                       return _ChatBubble(
                         message: message,
                         isRecipe: isRecipe,
                         recipeData: _recipeDataCache[index],
-                        isSaved: _currentSession?.recipeId != null && !isUserMessage,
+                        isSaved: isSaved,
+                        savedCollectionId: savedCollectionId,
                         onSave: () => _showSaveRecipeDialog(index),
-                        onView: _viewRecipe,
+                        onSaveToCollection: () => _showSaveToCollectionDialog(index),
+                        onView: () => _viewRecipe(index),
+                        onViewCollection: savedCollectionId != null ? () => _viewCollection(index) : null,
                         isSaving: _isSaving && index == _messages.length - 1,
                         userProfilePictureUrl: _currentUser?.profilePictureUrl,
                       );
@@ -1534,8 +1780,11 @@ class _ChatBubble extends StatelessWidget {
   final bool isRecipe;
   final Map<String, dynamic>? recipeData;
   final bool isSaved;
+  final String? savedCollectionId;
   final VoidCallback onSave;
+  final VoidCallback onSaveToCollection;
   final VoidCallback onView;
+  final VoidCallback? onViewCollection;
   final bool isSaving;
   final String? userProfilePictureUrl;
 
@@ -1544,8 +1793,11 @@ class _ChatBubble extends StatelessWidget {
     required this.isRecipe,
     this.recipeData,
     required this.isSaved,
+    this.savedCollectionId,
     required this.onSave,
+    required this.onSaveToCollection,
     required this.onView,
+    this.onViewCollection,
     required this.isSaving,
     this.userProfilePictureUrl,
   });
@@ -1590,8 +1842,11 @@ class _ChatBubble extends StatelessWidget {
                     message: message,
                     recipeData: recipeData,
                     isSaved: isSaved,
+                    savedCollectionId: savedCollectionId,
                     onSave: isUser ? () {} : onSave, // Don't allow saving user's remix recipe
+                    onSaveToCollection: isUser ? () {} : onSaveToCollection,
                     onView: onView,
+                    onViewCollection: onViewCollection,
                     isSaving: isSaving,
                     isUserMessage: isUser,
                   )
@@ -1635,8 +1890,11 @@ class _RecipeCard extends StatefulWidget {
   final ChatMessageModel message;
   final Map<String, dynamic>? recipeData;
   final bool isSaved;
+  final String? savedCollectionId;
   final VoidCallback onSave;
+  final VoidCallback onSaveToCollection;
   final VoidCallback onView;
+  final VoidCallback? onViewCollection;
   final bool isSaving;
   final bool isUserMessage;
 
@@ -1644,8 +1902,11 @@ class _RecipeCard extends StatefulWidget {
     required this.message,
     this.recipeData,
     required this.isSaved,
+    this.savedCollectionId,
     required this.onSave,
+    required this.onSaveToCollection,
     required this.onView,
+    this.onViewCollection,
     required this.isSaving,
     this.isUserMessage = false,
   });
@@ -1989,6 +2250,7 @@ class _RecipeCardState extends State<_RecipeCard> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  // Save/View Recipe button - always shown
                   if (widget.isSaved)
                     ElevatedButton.icon(
                       onPressed: widget.isSaving ? null : widget.onView,
@@ -2015,6 +2277,28 @@ class _RecipeCardState extends State<_RecipeCard> {
                       label: Text(widget.isSaving ? 'Saving...' : 'Save Recipe'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  // Save/View Collection button - always shown
+                  const SizedBox(width: 8),
+                  if (widget.savedCollectionId != null && widget.onViewCollection != null)
+                    ElevatedButton.icon(
+                      onPressed: widget.onViewCollection,
+                      icon: const Icon(Icons.folder, size: 18),
+                      label: const Text('View Collection'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                      ),
+                    )
+                  else
+                    ElevatedButton.icon(
+                      onPressed: widget.isSaving ? null : widget.onSaveToCollection,
+                      icon: const Icon(Icons.folder_outlined, size: 18),
+                      label: const Text('Save to Collection'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
                       ),
                     ),
@@ -2483,5 +2767,130 @@ class _TrianglePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => false;
+}
+
+class _AddToCollectionDialog extends StatefulWidget {
+  final List<CollectionModel> collections;
+  final String recipeId;
+  final Set<String> collectionsWithRecipe;
+  final Function(String) onCollectionSelected;
+  final Function(String) onCollectionRemoved;
+
+  const _AddToCollectionDialog({
+    required this.collections,
+    required this.recipeId,
+    required this.collectionsWithRecipe,
+    required this.onCollectionSelected,
+    required this.onCollectionRemoved,
+  });
+
+  @override
+  State<_AddToCollectionDialog> createState() => _AddToCollectionDialogState();
+}
+
+class _AddToCollectionDialogState extends State<_AddToCollectionDialog> {
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 500),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Text(
+                    'Add to Collection',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.check),
+                    onPressed: () => Navigator.of(context).pop(),
+                    tooltip: 'Done',
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: widget.collections.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.folder_outlined, size: 48, color: Colors.grey[400]),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No collections yet',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Create a collection first',
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: widget.collections.length,
+                      itemBuilder: (context, index) {
+                        final collection = widget.collections[index];
+                        final isInCollection = widget.collectionsWithRecipe.contains(collection.id);
+                        return CheckboxListTile(
+                          title: Text(collection.name),
+                          subtitle: Text(
+                            '${collection.recipeCount} recipe${collection.recipeCount != 1 ? 's' : ''}',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                          value: isInCollection,
+                          onChanged: (value) {
+                            if (value == true) {
+                              widget.onCollectionSelected(collection.id);
+                            } else {
+                              widget.onCollectionRemoved(collection.id);
+                            }
+                            setState(() {
+                              if (value == true) {
+                                widget.collectionsWithRecipe.add(collection.id);
+                              } else {
+                                widget.collectionsWithRecipe.remove(collection.id);
+                              }
+                            });
+                          },
+                          secondary: Icon(
+                            isInCollection ? Icons.folder : Icons.folder_outlined,
+                            color: isInCollection ? Theme.of(context).primaryColor : Colors.grey,
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
